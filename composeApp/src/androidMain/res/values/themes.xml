@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Anulamos el fondo de la ventana para que no interfiera con Compose -->
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>
