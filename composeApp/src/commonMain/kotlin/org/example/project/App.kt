@@ -15,7 +15,7 @@ sealed class Screen {
     object Profile : Screen()
 }
 
-@OptIn(ExperimentalAnimationApi::class) // <- ANOTACIÓN AÑADIDA
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 @Preview
 fun App() {
@@ -47,7 +47,11 @@ fun App() {
                     }
                 )
                 is Screen.AdminPanel -> AdminPanelScreen(
-                    onLogout = { currentScreen = Screen.Login }
+                    onLogout = { currentScreen = Screen.Login },
+                    onSwitchToUserView = { // Lógica para cambiar a vista de usuario
+                        sessionManager.saveSession() // Guarda una sesión de "usuario normal"
+                        currentScreen = Screen.Home // Va a la pantalla principal
+                    }
                 )
                 is Screen.GoalSelection -> GoalSelectionScreen(
                     onGoalSelected = { goal ->
