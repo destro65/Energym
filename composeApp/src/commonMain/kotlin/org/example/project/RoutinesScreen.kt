@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,11 +33,11 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-// --- Data Classes para la nueva lógica ---
+// --- Data Classes ---
 data class RadarItem(val name: String, val lastTrained: String, val icon: ImageVector)
 data class Exercise(val name: String, val details: String, val videoUrl: String? = null)
 
-// --- Lógica de Datos Dinámica ---
+// --- Lógica de Datos ---
 fun getRadarItemsForGoal(goal: String): List<RadarItem> {
     return when (goal) {
         "Ganar Masa Muscular", "Definición" -> listOf(
@@ -62,57 +61,50 @@ fun getRoutineForGoal(goal: String, itemName: String): List<Exercise> {
     return when (goal) {
         "Ganar Masa Muscular" -> when (itemName) {
             "Pecho" -> listOf(
-                Exercise("Press de Banca Plano", "4 series x 6-8 reps (al fallo)", "https://www.youtube.com/watch?v=TAH8RxOS0VI"),
+                Exercise("Press de Banca Plano", "4 series x 6-8 reps", "https://www.youtube.com/watch?v=TAH8RxOS0VI"),
                 Exercise("Press Inclinado con Mancuernas", "3 series x 8-10 reps"),
-                Exercise("Aperturas con Cable o Fondos", "3 series x 10-12 reps")
+                Exercise("Aperturas con Cable", "3 series x 12 reps")
             )
             "Espalda" -> listOf(
-                Exercise("Dominadas o Jalón al Pecho", "4 series al fallo o 8-10 reps"),
+                Exercise("Dominadas", "4 series al fallo"),
                 Exercise("Remo con Barra", "4 series x 8-10 reps"),
-                Exercise("Remo en Punta o Serrucho", "3 series x 10-12 reps por brazo")
+                Exercise("Jalón al Pecho", "3 series x 12 reps")
             )
             "Piernas" -> listOf(
-                Exercise("Sentadillas con Barra", "4 series x 6-8 reps (al fallo)"),
-                Exercise("Prensa de Piernas", "3 series x 10-12 reps"),
-                Exercise("Extensiones de Cuádriceps", "3 series x 12-15 reps"),
-                Exercise("Curl Femoral", "3 series x 12-15 reps")
+                Exercise("Sentadillas", "4 series x 8 reps"),
+                Exercise("Prensa", "3 series x 12 reps"),
+                Exercise("Curl Femoral", "3 series x 12 reps")
             )
-            "Hombro" -> listOf(
-                Exercise("Press Militar con Barra", "4 series x 6-8 reps"),
-                Exercise("Elevaciones Laterales con Mancuerna", "4 series x 12-15 reps"),
-                Exercise("Face Pulls (Tirón a la cara)", "3 series x 15-20 reps")
-            )
-            "Brazos" -> listOf(
-                Exercise("Curl de Bíceps con Barra", "4 series x 8-10 reps"),
-                Exercise("Press Francés o Fondos para Tríceps", "4 series x 8-10 reps"),
-                Exercise("Curl Martillo con Mancuerna", "3 series x 10-12 reps"),
-                Exercise("Extensiones de Tríceps en Polea", "3 series x 12-15 reps")
-            )
-            else -> listOf(Exercise("Ejercicio de Ejemplo", "3 series x 10 reps")) // Fallback
+            else -> listOf(Exercise("Ejercicio Genérico", "3 series x 10 reps"))
         }
-        else -> emptyList() // Fallback para otros objetivos
+        "Definición" -> listOf(Exercise("Circuito Definición", "Altas repeticiones, bajo descanso"))
+        "Perder Peso" -> listOf(Exercise("Cardio Intenso", "45 minutos de actividad constante"))
+        "Mejorar Resistencia" -> listOf(Exercise("Intervalos HIIT", "30 seg activo / 30 seg descanso"))
+        else -> emptyList()
     }
 }
 
 @Composable
 fun RoutinesScreen(userGoal: String, onBack: () -> Unit) {
     var selectedItem by remember { mutableStateOf<RadarItem?>(null) }
-    var videoUrlToPlay by remember { mutableStateOf<String?>(null) }
     var rotationAngle by remember { mutableStateOf(0f) }
-    var showRadarInfoDialog by remember { mutableStateOf(false) }
     var showRecoveryInfoDialog by remember { mutableStateOf(false) }
 
     val radarItems = getRadarItemsForGoal(userGoal)
 
-    if (showRecoveryInfoDialog) { /* ... Diálogo ... */ }
-    if (showRadarInfoDialog) { /* ... Diálogo ... */ }
+    if (showRecoveryInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showRecoveryInfoDialog = false },
+            title = { Text("Información", color = Color.White) },
+            text = { Text("Recuerda descansar cada grupo muscular al menos 48 horas.", color = Color.White.copy(alpha = 0.8f)) },
+            containerColor = Color(0xFF333333),
+            confirmButton = { TextButton(onClick = { showRecoveryInfoDialog = false }) { Text("OK", color = Color(0xFFB39DDB)) } }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // --- CONTENIDO DEL RADAR RESTAURADO ---
         Column(
-            modifier = Modifier.fillMaxSize().background(
-                brush = Brush.radialGradient(colors = listOf(Color(0xFF220044), Color.Black))
-            )
+            modifier = Modifier.fillMaxSize().background(brush = Brush.radialGradient(colors = listOf(Color(0xFF220044), Color.Black)))
         ) {
              Row(
                 modifier = Modifier
@@ -121,14 +113,9 @@ fun RoutinesScreen(userGoal: String, onBack: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Radar: $userGoal",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(text = "Radar: $userGoal", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
                 IconButton(onClick = { showRecoveryInfoDialog = true }) {
-                    Icon(Icons.Default.Info, contentDescription = "Información de Recuperación", tint = Color.Gray)
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray)
                 }
             }
 
@@ -149,56 +136,28 @@ fun RoutinesScreen(userGoal: String, onBack: () -> Unit) {
                     val angleStep = 360f / radarItems.size
                     val itemAngleRad = Math.toRadians((angleStep * index + rotationAngle).toDouble())
                     val visualRadius = maxRadius * 0.7f
-
                     val itemX = (visualRadius * cos(itemAngleRad)).toFloat()
                     val itemY = (visualRadius * sin(itemAngleRad)).toFloat()
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .offset { IntOffset(itemX.roundToInt(), itemY.roundToInt()) }
-                            .clickable { selectedItem = item }
+                        modifier = Modifier.offset { IntOffset(itemX.roundToInt(), itemY.roundToInt()) }.clickable { selectedItem = item }
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.5f))
-                                .border(1.dp, Color(0xFFB39DDB), CircleShape)
+                            modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)).border(1.dp, Color(0xFFB39DDB), CircleShape)
                         ) {
                             Icon(item.icon, item.name, tint = Color(0xFFB39DDB), modifier = Modifier.size(30.dp))
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = item.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Text(text = item.lastTrained, color = Color.Gray, fontSize = 10.sp)
-                    }
-                }
-
-                IconButton(
-                    onClick = { showRadarInfoDialog = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(24.dp)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    ) {
-                        Icon(
-                            Icons.Default.Info, 
-                            contentDescription = "Información del Radar", 
-                            tint = Color.White,
-                            modifier = Modifier.padding(8.dp)
-                        )
                     }
                 }
             }
         }
 
-        // --- VISTA DE DETALLE DE RUTINA ---
         AnimatedVisibility(
-            visible = selectedItem != null && videoUrlToPlay == null, 
+            visible = selectedItem != null,
             enter = fadeIn(tween(300)) + scaleIn(tween(300)),
             exit = fadeOut(tween(300)) + scaleOut(tween(300))
         ) {
@@ -207,16 +166,9 @@ fun RoutinesScreen(userGoal: String, onBack: () -> Unit) {
                 RoutineDetailView(
                     itemName = item.name,
                     routine = routine,
-                    onPlayVideo = { videoUrl -> videoUrlToPlay = videoUrl },
+                    onPlayVideo = { /* Navegar a video */ },
                     onDismiss = { selectedItem = null }
                 )
-            }
-        }
-
-        // --- VISTA DE REPRODUCTOR DE VIDEO ---
-        AnimatedVisibility(visible = videoUrlToPlay != null) {
-            videoUrlToPlay?.let {
-                VideoPlayerScreen(url = it, onDismiss = { videoUrlToPlay = null })
             }
         }
     }
@@ -224,89 +176,40 @@ fun RoutinesScreen(userGoal: String, onBack: () -> Unit) {
 
 @Composable
 fun RoutineDetailView(itemName: String, routine: List<Exercise>, onPlayVideo: (String) -> Unit, onDismiss: () -> Unit) {
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.9f))
-            .clickable { onDismiss() },
+        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.7f)
-                .clickable(enabled = false) {},
+            modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.7f).clickable(enabled = false) {},
             colors = CardDefaults.cardColors(containerColor = Color(0xFF220044)),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp).fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Rutina: $itemName", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Cerrar", tint = Color.White)
-                    }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null, tint = Color.White) }
                 }
                 Divider(color = Color(0xFFB39DDB), modifier = Modifier.padding(vertical = 8.dp))
                 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(vertical = 16.dp)
-                ) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 16.dp)) {
                     items(routine) { exercise ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.FitnessCenter, null, tint = Color(0xFFB39DDB), modifier = Modifier.padding(end = 12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(exercise.name, color = Color.White, fontWeight = FontWeight.Bold)
                                     Text(exercise.details, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                                 }
                                 if (exercise.videoUrl != null) {
-                                    Spacer(modifier = Modifier.width(8.dp))
                                     IconButton(onClick = { onPlayVideo(exercise.videoUrl) }) {
-                                        Icon(Icons.Default.PlayCircle, "Ver video", tint = Color.Red)
+                                        Icon(Icons.Default.PlayCircle, null, tint = Color.Red)
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun VideoPlayerScreen(url: String, onDismiss: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
-            .clickable { onDismiss() }, // Clic en el fondo para cerrar
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            // Este clickable vacío intercepta los clics para que no se propaguen al fondo
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {}
-        ) {
-            VideoPlayer(modifier = Modifier.fillMaxWidth(0.95f).aspectRatio(16f / 9f), url = url)
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) {
-                Text("Cerrar Video", color = Color.Black)
             }
         }
     }

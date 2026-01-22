@@ -23,55 +23,35 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.kamel.image.KamelImage
+import io.kamel.image.asyncPainterResource
 
-// --- DATA CLASSES ---
-data class Award(
-    val title: String,
-    val winner: String,
-    val icon: ImageVector,
-    val userImage: @Composable () -> Unit,
-    val description: String,
-    val weight: String,
-    val height: String,
-    val socials: Map<String, String>,
-    val date: String
-)
-
-data class SocialLink(val name: String, val icon: @Composable () -> Unit, val url: String)
-
-// --- PANTALLA PRINCIPAL ---
 @Composable
 fun SocialScreen() {
-    var selectedWinner by remember { mutableStateOf<Award?>(null) }
+    val apiService = remember { ApiService() }
+    val sessionManager = rememberSessionManager()
+    val uriHandler = LocalUriHandler.current
+    var userList by remember { mutableStateOf<List<UserInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var selectedWinner by remember { mutableStateOf<UserInfo?>(null) }
+    var winnerAwardType by remember { mutableStateOf("") }
 
-    val awards = listOf(
-        Award("Premio a la Constancia", "Ana Pérez", Icons.Default.EmojiEvents,
-            userImage = { UserImagePlaceholder(tint = Color(0xFFF48FB1)) },
-            description = "Ana ha demostrado una asistencia casi perfecta durante todo el mes, ¡un ejemplo de disciplina!",
-            weight = "62 kg", height = "1.65 m",
-            socials = mapOf("Instagram" to "https://instagram.com", "Facebook" to "https://facebook.com"),
-            date = "01/06/2024"
-        ),
-        Award("Premio a la Determinación", "Carlos Ruiz", Icons.Default.Star,
-            userImage = { UserImagePlaceholder(tint = Color(0xFF81D4FA)) },
-            description = "Carlos superó sus propios límites, aumentando su resistencia en un 20%. ¡Pura determinación!",
-            weight = "78 kg", height = "1.80 m",
-            socials = mapOf("Instagram" to "https://instagram.com", "Facebook" to "https://facebook.com"),
-            date = "01/06/2024"
-        ),
-        Award("Premio a la Fuerza", "Luisa Gómez", Icons.Default.FitnessCenter,
-            userImage = { UserImagePlaceholder(tint = Color(0xFFC5E1A5)) },
-            description = "Luisa rompió el récord del gimnasio en levantamiento de peso muerto. ¡Una fuerza imparable!",
-            weight = "70 kg", height = "1.72 m",
-            socials = mapOf("Instagram" to "https://instagram.com", "Facebook" to "https://facebook.com"),
-            date = "01/06/2024"
-        )
-    )
+    LaunchedEffect(Unit) {
+        val token = sessionManager.getToken() ?: ""
+        userList = apiService.getUsers(token) 
+        isLoading = false
+    }
+
+    val winners = userList.filter { 
+        it.premio_constancia == 1 || it.premio_fuerza == 1 || it.premio_determinacion == 1 
+    }
 
     val appSocialLinks = listOf(
         SocialLink("Instagram", { Icon(Icons.Default.Share, null, tint = Color.White) }, "https://instagram.com/energym"),
@@ -90,10 +70,22 @@ fun SocialScreen() {
                 item {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()){
                         Text("Salón de la Fama - Energym", style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                        Text("Reconocimientos mensuales a nuestros atletas más destacados.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 24.dp))
+                        Text("Reconocimientos a nuestros atletas más destacados.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 24.dp))
                     }
                 }
-                items(awards) { award -> AwardCard(award, onClick = { selectedWinner = award }) }
+
+                if (isLoading) {
+                    item { Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color(0xFFB39DDB)) } }
+                } else if (winners.isEmpty()) {
+                    item { Text("Aún no hay ganadores este mes.", color = Color.Gray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+                } else {
+                    items(winners) { user ->
+                        if (user.premio_constancia == 1) AwardUserCard(user, "Premio a la Constancia", Icons.Default.EmojiEvents, Color(0xFFFFD700), user.fecha_premio_constancia ?: "") { selectedWinner = user; winnerAwardType = "Constancia" }
+                        if (user.premio_fuerza == 1) AwardUserCard(user, "Premio a la Fuerza", Icons.Default.FitnessCenter, Color(0xFFE57373), user.fecha_premio_fuerza ?: "") { selectedWinner = user; winnerAwardType = "Fuerza" }
+                        if (user.premio_determinacion == 1) AwardUserCard(user, "Premio a la Determinación", Icons.Default.Star, Color(0xFF64B5F6), user.fecha_premio_determinacion ?: "") { selectedWinner = user; winnerAwardType = "Determinación" }
+                    }
+                }
+
                 item { 
                     Text("Síguenos", style = MaterialTheme.typography.headlineSmall, color = Color.White, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
                 }
@@ -107,39 +99,67 @@ fun SocialScreen() {
             enter = fadeIn(animationSpec = tween(300)) + slideInVertically(initialOffsetY = { it / 2 }),
             exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(targetOffsetY = { it / 2 })
         ) {
-            selectedWinner?.let { WinnerDetailView(award = it, onDismiss = { selectedWinner = null }) }
+            selectedWinner?.let { user -> 
+                WinnerDetailView(
+                    user = user, 
+                    awardType = winnerAwardType,
+                    onDismiss = { selectedWinner = null }
+                ) 
+            }
         }
     }
 }
 
 @Composable
-fun AwardCard(award: Award, onClick: () -> Unit) {
+fun AwardUserCard(user: UserInfo, title: String, icon: ImageVector, iconColor: Color, date: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(16.dp)) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = award.icon, null, tint = Color(0xFFFFD700), modifier = Modifier.size(32.dp))
+                    Icon(imageVector = icon, null, tint = iconColor, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(award.title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-                Text("Ganador: ${award.winner}", color = Color.Gray, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 44.dp))
+                Text("Atleta: ${user.nombre_completo}", color = Color.Gray, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 44.dp))
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text("Fecha", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                Text(award.date, color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text("Desde", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Text(date, color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
-            award.userImage()
+            Box(modifier = Modifier.size(45.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                if (!user.foto_url.isNullOrEmpty()) {
+                    KamelImage(resource = asyncPainterResource(data = user.foto_url!!), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                } else {
+                    Icon(Icons.Default.Person, null, tint = Color.White.copy(alpha = 0.5f))
+                }
+            }
         }
     }
 }
 
 @Composable
-fun WinnerDetailView(award: Award, onDismiss: () -> Unit) {
+fun WinnerDetailView(user: UserInfo, awardType: String, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
+    val awardTitle = when(awardType) {
+        "Constancia" -> "Premio a la Constancia"
+        "Fuerza" -> "Premio a la Fuerza"
+        else -> "Premio a la Determinación"
+    }
+    val awardIcon = when(awardType) {
+        "Constancia" -> Icons.Default.EmojiEvents
+        "Fuerza" -> Icons.Default.FitnessCenter
+        else -> Icons.Default.Star
+    }
+    val awardColor = when(awardType) {
+        "Constancia" -> Color(0xFFFFD700)
+        "Fuerza" -> Color(0xFFE57373)
+        else -> Color(0xFF64B5F6)
+    }
+
     Box(
         modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center
@@ -154,35 +174,110 @@ fun WinnerDetailView(award: Award, onDismiss: () -> Unit) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Cerrar", tint = Color.White) }
                 }
-                award.userImage()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(award.winner, style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
-                Text(award.title, style = MaterialTheme.typography.titleMedium, color = Color(0xFFFFD700))
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatBadge(label = "Peso", value = award.weight, icon = Icons.Default.MonitorWeight)
-                    StatBadge(label = "Altura", value = award.height, icon = Icons.Default.Height)
+                Box(modifier = Modifier.size(100.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                    if (!user.foto_url.isNullOrEmpty()) {
+                        KamelImage(resource = asyncPainterResource(data = user.foto_url!!), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Icon(Icons.Default.Person, null, modifier = Modifier.size(60.dp), tint = Color.White.copy(alpha = 0.5f))
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = Color(0xFFB39DDB).copy(alpha = 0.5f))
+                Text(user.nombre_completo, style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(awardIcon, null, tint = awardColor, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(awardTitle, style = MaterialTheme.typography.titleMedium, color = awardColor)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(award.description, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), textAlign = TextAlign.Center)
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Conecta con ${award.winner.split(" ")[0]}:", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                    award.socials.forEach { (name, url) ->
-                        IconButton(
-                            onClick = { uriHandler.openUri(url) },
-                            modifier = Modifier.size(48.dp).background(Color.White.copy(alpha = 0.1f), CircleShape)
-                        ) {
-                            val icon = if (name == "Facebook") Icons.Default.Groups else Icons.Default.CameraAlt
-                            Icon(icon, name, tint = Color(0xFFB39DDB), modifier = Modifier.size(24.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    StatBadge(label = "Peso", value = "${user.peso} kg", icon = Icons.Default.MonitorWeight)
+                    StatBadge(label = "Altura", value = "${user.altura} cm", icon = Icons.Default.Height)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color(0xFFB39DDB).copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Atleta ejemplar de Energym reconocido por su excelente desempeño y compromiso con el entrenamiento.", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), textAlign = TextAlign.Center)
+                
+                // SECCIÓN DE REDES SOCIALES DINÁMICA
+                val hasSocials = !user.fb_url.isNullOrEmpty() || !user.ig_url.isNullOrEmpty() || !user.tk_url.isNullOrEmpty() || !user.wa_num.isNullOrEmpty()
+                
+                if (hasSocials) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("Conecta con el atleta:", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!user.fb_url.isNullOrEmpty()) {
+                            SocialIconButton(icon = Icons.Default.Facebook, color = Color(0xFF1877F2)) {
+                                safeOpenSocialUri(uriHandler, user.fb_url!!, "facebook")
+                            }
+                        }
+                        if (!user.ig_url.isNullOrEmpty()) {
+                            SocialIconButton(icon = Icons.Default.CameraAlt, color = Color(0xFFE4405F)) {
+                                safeOpenSocialUri(uriHandler, user.ig_url!!, "instagram")
+                            }
+                        }
+                        if (!user.tk_url.isNullOrEmpty()) {
+                            SocialIconButton(icon = Icons.Default.MusicNote, color = Color.White) {
+                                safeOpenSocialUri(uriHandler, user.tk_url!!, "tiktok")
+                            }
+                        }
+                        if (!user.wa_num.isNullOrEmpty()) {
+                            // Icono de teléfono/burbuja clásico para WhatsApp
+                            SocialIconButton(icon = Icons.Default.Chat, color = Color(0xFF25D366)) {
+                                val cleanNum = user.wa_num!!.filter { it.isDigit() }
+                                safeOpenSocialUri(uriHandler, cleanNum, "whatsapp")
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+// Función para abrir URIs de forma segura y evitar crashes por URLs malformadas o protocolos faltantes
+fun safeOpenSocialUri(uriHandler: UriHandler, input: String, platform: String) {
+    if (input.isBlank()) return
+    
+    val formattedUrl = when (platform) {
+        "whatsapp" -> "https://wa.me/${input.filter { it.isDigit() }}"
+        "tiktok" -> {
+            if (input.startsWith("http")) input
+            else if (input.startsWith("@")) "https://www.tiktok.com/$input"
+            else "https://www.tiktok.com/@$input"
+        }
+        "instagram" -> {
+            if (input.startsWith("http")) input
+            else "https://www.instagram.com/$input"
+        }
+        "facebook" -> {
+            if (input.startsWith("http")) input
+            else "https://www.facebook.com/$input"
+        }
+        else -> {
+            if (input.startsWith("http")) input else "https://$input"
+        }
+    }
+    
+    try {
+        uriHandler.openUri(formattedUrl)
+    } catch (e: Exception) {
+        println("Error abriendo social URI: ${e.message}")
+    }
+}
+
+@Composable
+fun SocialIconButton(icon: ImageVector, color: Color, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .background(color.copy(alpha = 0.1f), CircleShape)
+    ) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -204,7 +299,7 @@ fun StatBadge(label: String, value: String, icon: ImageVector) {
 fun DeveloperInfo() {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)),
-        modifier = Modifier.fillMaxWidth().padding(top = 32.dp) // Añadido padding superior
+        modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -213,7 +308,7 @@ fun DeveloperInfo() {
         ) {
              Text("El cerebro del proyecto", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
              Text("Harold Martinez", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-             Divider(modifier = Modifier.padding(vertical = 4.dp), color = Color.Gray.copy(alpha = 0.3f))
+             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color.Gray.copy(alpha = 0.3f))
              Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Phone, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
@@ -225,16 +320,6 @@ fun DeveloperInfo() {
                 Text("harol.lady@hotmail.com", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
              }
         }
-    }
-}
-
-@Composable
-fun UserImagePlaceholder(modifier: Modifier = Modifier, tint: Color = Color.White) {
-    Box(
-        modifier = modifier.size(80.dp).clip(CircleShape).background(tint.copy(alpha = 0.2f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(Icons.Default.Person, contentDescription = "Foto de usuario", tint = tint, modifier = Modifier.size(40.dp))
     }
 }
 
@@ -253,3 +338,5 @@ fun SocialCard(link: SocialLink) {
         }
     }
 }
+
+data class SocialLink(val name: String, val icon: @Composable () -> Unit, val url: String)

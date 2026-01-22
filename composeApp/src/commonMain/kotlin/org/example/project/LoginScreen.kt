@@ -3,4 +3,4 @@ package org.example.project
 import androidx.compose.runtime.Composable
 
 @Composable
-expect fun LoginScreen(onLoginSuccess: (isAdmin: Boolean) -> Unit)
+expect fun LoginScreen(onLoginSuccess: (user: UserInfo) -> Unit)

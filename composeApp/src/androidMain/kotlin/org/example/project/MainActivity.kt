@@ -1,12 +1,12 @@
 package org.example.project
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity // <- VOLVIENDO A LA BASE
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 
-class MainActivity : ComponentActivity() { // <- RESTAURADO
+class MainActivity : ComponentActivity() { // <- RESTAURADO A LA BASE ESTABLE
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

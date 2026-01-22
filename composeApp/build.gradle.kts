@@ -6,14 +6,11 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    kotlin("plugin.serialization") version "1.9.22"
 }
 
 kotlin {
-    androidTarget {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
+    androidTarget()
     
     listOf(
         iosArm64(),
@@ -29,8 +26,8 @@ kotlin {
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
-            implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.0")
-            implementation("com.google.android.material:material:1.12.0") // <- LIBRERÍA DE ESTILOS AÑADIDA
+            implementation("io.ktor:ktor-client-android:2.3.11")
+            implementation("com.google.android.material:material:1.12.0") // RESTAURADO PARA EL TEMA
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -42,6 +39,19 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+
+            // --- LIBRERÍAS DE KTOR Y SERIALIZACIÓN ---
+            implementation("io.ktor:ktor-client-core:2.3.11")
+            implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+            // ------------------------------------------
+            
+            // --- MANEJO DE FECHAS ---
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
+
+            // --- CARGA DE IMÁGENES ---
+            implementation(libs.kamel)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
