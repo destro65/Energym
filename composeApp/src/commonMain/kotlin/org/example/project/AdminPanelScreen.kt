@@ -469,6 +469,7 @@ fun UserListItem(user: UserInfo, onClick: () -> Unit) {
 @Composable
 fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminName: String, onDismiss: () -> Unit) {
     var tempNombre by remember { mutableStateOf(user.nombre_completo) }
+    var tempPassword by remember { mutableStateOf("") }
     var tempSuscripcionAdd by remember { mutableStateOf("") }
     val currentSuscripcion by remember { mutableStateOf(user.dias_suscripcion) }
     var premioConstancia by remember { mutableStateOf(user.premio_constancia == 1) }
@@ -500,6 +501,17 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                 HorizontalDivider(color = Color(0xFFB39DDB), modifier = Modifier.padding(vertical = 8.dp))
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                    
+                    // CAMBIO DE CONTRASEÑA
+                    OutlinedTextField(
+                        value = tempPassword, 
+                        onValueChange = { tempPassword = it }, 
+                        label = { Text("Nueva Contraseña (vacío para no cambiar)") }, 
+                        modifier = Modifier.fillMaxWidth(), 
+                        colors = fieldColors,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         OutlinedTextField(value = tempPeso, onValueChange = { if (it.all { char -> char.isDigit() }) tempPeso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), colors = fieldColors)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -523,7 +535,7 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                         scope.launch {
                             val finalSuscripcion = currentSuscripcion + (tempSuscripcionAdd.toIntOrNull() ?: 0)
                             val updated = user.copy(nombre_completo = tempNombre, peso = tempPeso, altura = tempAltura, dias_suscripcion = finalSuscripcion, record_peso = tempRecordPeso.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTiempo.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0)
-                            if (apiService.updateAdminUser(token, updated, adminName)) onDismiss()
+                            if (apiService.updateAdminUser(token, updated, adminName, tempPassword)) onDismiss()
                             isUpdating = false
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) }

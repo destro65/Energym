@@ -208,14 +208,17 @@ class ApiService {
         } catch (e: Exception) { null }
     }
 
-    suspend fun updateAdminUser(token: String, user: UserInfo, adminName: String): Boolean {
+    suspend fun updateAdminUser(token: String, user: UserInfo, adminName: String, newPassword: String? = null): Boolean {
         return try {
             apiClient.submitForm(url = "$baseUrl/users.php?id=${user.id_usuario}&action=update", formParameters = parameters {
                 append("nombre_completo", user.nombre_completo); append("peso", user.peso ?: ""); append("altura", user.altura ?: "")
                 append("record_peso", user.record_peso.toString()); append("record_tiempo", user.record_tiempo.toString())
                 append("premio_constancia", user.premio_constancia.toString()); append("premio_fuerza", user.premio_fuerza.toString())
                 append("premio_determinacion", user.premio_determinacion.toString()); append("dias_suscripcion", user.dias_suscripcion.toString())
-                append("admin_name", adminName) // Enviamos el nombre del admin para el historial
+                append("admin_name", adminName)
+                if (!newPassword.isNullOrBlank()) {
+                    append("password", newPassword)
+                }
             }) { header(HttpHeaders.Authorization, "Bearer $token") }.status == HttpStatusCode.OK
         } catch (e: Exception) { false }
     }
