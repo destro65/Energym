@@ -27,6 +27,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
 import kotlinx.coroutines.launch
@@ -54,7 +56,6 @@ expect fun ImagePicker(
     onImageSelected: (ByteArray) -> Unit
 )
 
-// Helper para asegurar que la URL sea absoluta
 fun getFullImageUrl(url: String?): String? {
     if (url.isNullOrEmpty()) return null
     return if (url.startsWith("http")) url else "http://192.168.100.86/api/$url"
@@ -65,7 +66,6 @@ fun getFullImageUrl(url: String?): String? {
 fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView: () -> Unit) {
     val tabs = listOf("Dashboard", "Usuarios", "Tienda")
     val pagerState = rememberPagerState(pageCount = { tabs.size })
-    val selectedTabIndex = pagerState.currentPage
     val scope = rememberCoroutineScope()
     val apiService = remember { ApiService() }
     val sessionManager = rememberSessionManager()
@@ -101,20 +101,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
         }
     }
 
-    LaunchedEffect(Unit) { 
-        refreshUsers() 
-        refreshArticulos()
-    }
-
-    // NOTIFICACIÓN ADMIN: Usuarios por vencer
-    LaunchedEffect(userList) {
-        val expiringCount = userList.count { it.rol == "normal" && it.dias_suscripcion in 1..5 }
-        if (expiringCount > 0) {
-            scope.launch {
-                snackbarHostState.showSnackbar("Atención: Hay $expiringCount usuarios con menos de 5 días de suscripción")
-            }
-        }
-    }
+    LaunchedEffect(Unit) { refreshUsers(); refreshArticulos() }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -129,18 +116,13 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                     }
                 )
                 SecondaryTabRow(
-                    selectedTabIndex = selectedTabIndex,
+                    selectedTabIndex = pagerState.currentPage,
                     containerColor = Color(0xFF39006F),
                     contentColor = Color.White,
-                    indicator = { 
-                        TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(selectedTabIndex, matchContentSize = true),
-                            color = Color(0xFFB39DDB)
-                        ) 
-                    }
+                    indicator = { TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pagerState.currentPage, matchContentSize = true), color = Color(0xFFB39DDB)) }
                 ) {
                     tabs.forEachIndexed { index, title ->
-                        Tab(selected = selectedTabIndex == index, onClick = { scope.launch { pagerState.animateScrollToPage(index) } }, text = { Text(text = title) })
+                        Tab(selected = pagerState.currentPage == index, onClick = { scope.launch { pagerState.animateScrollToPage(index) } }, text = { Text(text = title) })
                     }
                 }
             }
@@ -149,23 +131,9 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding).background(brush = Brush.verticalGradient(colors = listOf(Color.Black, Color(0xFF39006F))))) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 when (page) {
-                    0 -> AdminDashboardTab(
-                        adminName = adminName, 
-                        userList = userList,
-                        historyList = historyList
-                    )
-                    1 -> UserManagementTab(
-                        userList = userList, 
-                        isLoading = isAdminLoading, 
-                        onUserClick = { selectedUser = it },
-                        onAddNew = { showAddUserDialog = true }
-                    )
-                    2 -> ShopManagementTab(
-                        articulos = articulosList, 
-                        isLoading = isArticulosLoading, 
-                        onArticuloClick = { selectedArticulo = it },
-                        onAddNew = { showAddArticuloDialog = true }
-                    )
+                    0 -> AdminDashboardTab(adminName, userList, historyList)
+                    1 -> UserManagementTab(userList, isAdminLoading, { selectedUser = it }, { showAddUserDialog = true })
+                    2 -> ShopManagementTab(articulosList, isArticulosLoading, { selectedArticulo = it }, { showAddArticuloDialog = true })
                 }
             }
             
@@ -176,10 +144,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                         apiService = apiService,
                         token = sessionManager.getToken() ?: "",
                         adminName = adminName,
-                        onDismiss = { 
-                            selectedUser = null
-                            refreshUsers()
-                        }
+                        onDismiss = { selectedUser = null; refreshUsers() }
                     )
                 }
             }
@@ -190,9 +155,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                         articulo = articulo,
                         apiService = apiService,
                         onRefresh = { refreshArticulos() },
-                        onDismiss = { 
-                            selectedArticulo = null
-                        }
+                        onDismiss = { selectedArticulo = null }
                     )
                 }
             }
@@ -200,25 +163,17 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
     }
 
     if (showAddUserDialog) {
-        CreateUserDialog(
-            apiService = apiService, 
-            snackbarHostState = snackbarHostState, 
-            onDismiss = { showAddUserDialog = false }, 
-            onUserCreated = { 
-                refreshUsers()
-                scope.launch { pagerState.animateScrollToPage(1) } // Salta a Usuarios
-            }
-        )
+        CreateUserDialog(apiService, snackbarHostState, { showAddUserDialog = false }, { 
+            refreshUsers()
+            scope.launch { pagerState.animateScrollToPage(1) }
+        })
     }
 
     if (showAddArticuloDialog) {
-        AddArticuloDialog(
-            onDismiss = { showAddArticuloDialog = false }, 
-            onArticuloCreated = { 
-                refreshArticulos()
-                scope.launch { pagerState.animateScrollToPage(2) } // Salta a Tienda
-            }
-        )
+        AddArticuloDialog({ showAddArticuloDialog = false }, { 
+            refreshArticulos()
+            scope.launch { pagerState.animateScrollToPage(2) }
+        })
     }
 }
 
@@ -230,16 +185,14 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
         userList.count { user ->
             try {
                 val regDate = user.fecha_registro?.split(" ")?.get(0)?.let { LocalDate.parse(it) }
-                if (regDate != null) { regDate.daysUntil(now) <= 30 } else false
+                if (regDate != null) regDate.daysUntil(now) <= 30 else false
             } catch (_: Exception) { false }
         }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("¡Bienvenido, $adminName!", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        
         Spacer(modifier = Modifier.height(24.dp))
-
         Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), modifier = Modifier.fillMaxWidth()) {
              Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Estadística de Usuarios", style = MaterialTheme.typography.titleLarge, color = Color.White)
@@ -250,47 +203,34 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
                 }
             }
         }
-
         Spacer(modifier = Modifier.height(24.dp))
         Text("Crecimiento de Usuarios", color = Color.Gray, fontSize = 14.sp)
         Spacer(modifier = Modifier.height(16.dp))
         Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), modifier = Modifier.fillMaxWidth().height(200.dp)) {
-            Box(modifier = Modifier.padding(16.dp)) {
-                UserGrowthLineChart(userList)
-            }
+            Box(modifier = Modifier.padding(16.dp)) { UserGrowthLineChart(userList) }
         }
-
         if (expiringUsers.isNotEmpty()) {
             Spacer(modifier = Modifier.height(24.dp))
             Text("Alertas de Suscripción", color = Color.Gray, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF39006F).copy(alpha = 0.2f)), 
-                border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.5f))
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF39006F).copy(alpha = 0.2f)), border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.5f))) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.NotificationsActive, null, tint = Color(0xFFB39DDB))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Suscripciones por vencer (< 5 días)", color = Color.White, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp)); Text("Suscripciones por vencer (< 5 días)", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    expiringUsers.forEach { user ->
-                        Text("• ${user.nombre_completo}: ${user.dias_suscripcion} días restantes", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                    }
+                    expiringUsers.forEach { user -> Text("• ${user.nombre_completo}: ${user.dias_suscripcion} días restantes", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp) }
                 }
             }
         }
-
-        // HISTORIAL DE SUSCRIPCIONES
         Spacer(modifier = Modifier.height(24.dp))
         Text("Historial de Recargas", color = Color.Gray, fontSize = 14.sp)
         Spacer(modifier = Modifier.height(16.dp))
         Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                if (historyList.isEmpty()) {
-                    Text("No hay registros recientes.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                } else {
+                if (historyList.isEmpty()) { Text("No hay registros.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) } 
+                else {
                     historyList.take(10).forEach { item ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -302,12 +242,11 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
                                 Text(item.fecha_accion.split(" ")[0], color = Color.Gray, fontSize = 10.sp)
                             }
                         }
-                        if (item != historyList.last()) HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                        if (item != historyList.take(10).last()) HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                     }
                 }
             }
         }
-        
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
@@ -324,9 +263,7 @@ fun UserGrowthLineChart(userList: List<UserInfo>) {
             val count = userList.count { user ->
                 try {
                     val regDate = user.fecha_registro?.split(" ")?.get(0)?.let { LocalDate.parse(it) }
-                    if (regDate != null) {
-                        regDate.month == monthIdx && regDate.year == year
-                    } else false
+                    if (regDate != null) regDate.month == monthIdx && regDate.year == year else false
                 } catch (_: Exception) { false }
             }
             spanishMonths[monthIdx.number - 1] to count.toFloat()
@@ -336,14 +273,11 @@ fun UserGrowthLineChart(userList: List<UserInfo>) {
     Row(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxHeight().padding(end = 8.dp).width(24.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
             Text(maxCount.toInt().toString(), color = Color.Gray, fontSize = 10.sp)
-            Text("0", color = Color.Gray, fontSize = 10.sp)
-            Spacer(modifier = Modifier.height(20.dp))
+            Text("0", color = Color.Gray, fontSize = 10.sp); Spacer(modifier = Modifier.height(20.dp))
         }
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             Canvas(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                val width = size.width
-                val height = size.height
-                val spacing = width / (monthsData.size - 1)
+                val width = size.width; val height = size.height; val spacing = width / (monthsData.size - 1)
                 val points = monthsData.mapIndexed { index, data -> Offset(index * spacing, height - (data.second / maxCount) * height * 0.8f) }
                 if (points.isNotEmpty()) {
                     val strokePath = Path().apply { moveTo(points.first().x, points.first().y); points.forEach { lineTo(it.x, it.y) } }
@@ -363,19 +297,16 @@ fun UserGrowthLineChart(userList: List<UserInfo>) {
 fun UserManagementTab(userList: List<UserInfo>, isLoading: Boolean, onUserClick: (UserInfo) -> Unit, onAddNew: () -> Unit) {
     val normalUsers = userList.filter { it.rol == "normal" }
     val adminUsers = userList.filter { it.rol == "admin" }
-
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Usuarios", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
             Button(onClick = onAddNew, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) {
-                Icon(Icons.Default.PersonAdd, null, tint = Color.Black)
-                Text("Nuevo", color = Color.Black)
+                Icon(Icons.Default.PersonAdd, null, tint = Color.Black); Text("Nuevo", color = Color.Black)
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
-        } else {
+        if (isLoading) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) } } 
+        else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 item { Text("Atletas", color = Color(0xFFB39DDB), fontWeight = FontWeight.Bold) }
                 items(normalUsers) { user -> UserListItem(user = user, onClick = { onUserClick(user) }) }
@@ -393,22 +324,12 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
     var nombre by remember { mutableStateOf("") }; var email by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }; var peso by remember { mutableStateOf("") }
     var altura by remember { mutableStateOf("") }; var edad by remember { mutableStateOf("") }
-    val genero by remember { mutableStateOf("Masculino") }
-    var isCreating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedBorderColor = Color(0xFFB39DDB),
-        unfocusedBorderColor = Color.Gray,
-        focusedLabelColor = Color(0xFFB39DDB),
-        unfocusedLabelColor = Color.Gray
-    )
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF220044),
-        title = { Text("Nuevo Usuario", color = Color.White) },
+        onDismissRequest = onDismiss, containerColor = Color(0xFF220044), title = { Text("Nuevo Usuario", color = Color.White) },
+        properties = DialogProperties(dismissOnClickOutside = false),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre Completo") }, textStyle = TextStyle(color = Color.White), colors = fieldColors)
@@ -424,16 +345,11 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
         confirmButton = {
             Button(onClick = {
                 if (nombre.isBlank() || email.isBlank() || pass.isBlank()) { scope.launch { snackbarHostState.showSnackbar("Completa los campos") }; return@Button }
-                isCreating = true
                 scope.launch {
-                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, edad.toIntOrNull() ?: 0, genero, "")
-                    if (res.error == null) onUserCreated() else res.error?.let { snackbarHostState.showSnackbar(it) }
-                    isCreating = false
+                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, edad.toIntOrNull() ?: 0, "Masculino")
+                    if (res.error == null) onUserCreated() else res.error.let { snackbarHostState.showSnackbar(it) }
                 }
-            }, enabled = !isCreating, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) {
-                if (isCreating) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                else Text("Guardar", color = Color.Black)
-            }
+            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { Text("Guardar", color = Color.Black) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = Color.White) } }
     )
@@ -444,18 +360,16 @@ fun UserListItem(user: UserInfo, onClick: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(45.dp).clip(CircleShape).background(Color.Gray.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                user.foto_url?.let {
-                    val fullUrl = getFullImageUrl(it)
-                    if (fullUrl != null) { KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } 
-                    else { Icon(Icons.Default.Person, null, tint = Color.White.copy(alpha = 0.5f)) }
-                } ?: Icon(Icons.Default.Person, null, tint = Color.White.copy(alpha = 0.5f))
+                val fullUrl = getFullImageUrl(user.foto_url)
+                if (fullUrl != null) KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                else Icon(Icons.Default.Person, null, tint = Color.White.copy(alpha = 0.5f))
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (user.premio_constancia == 1) Icon(Icons.Default.EmojiEvents, "Constancia", tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp).padding(end = 4.dp))
-                    if (user.premio_fuerza == 1) Icon(Icons.Default.FitnessCenter, "Fuerza", tint = Color(0xFFE57373), modifier = Modifier.size(18.dp).padding(end = 4.dp))
-                    if (user.premio_determinacion == 1) Icon(Icons.Default.Star, "Determinación", tint = Color(0xFF64B5F6), modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                    if (user.premio_constancia == 1) Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                    if (user.premio_fuerza == 1) Icon(Icons.Default.FitnessCenter, null, tint = Color(0xFFE57373), modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                    if (user.premio_determinacion == 1) Icon(Icons.Default.Star, null, tint = Color(0xFF64B5F6), modifier = Modifier.size(18.dp).padding(end = 4.dp))
                     Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
                 }
                 Text("Suscripción: ${user.dias_suscripcion} días", color = if (user.dias_suscripcion < 5) Color(0xFFE57373) else Color.Gray, fontSize = 11.sp)
@@ -468,28 +382,15 @@ fun UserListItem(user: UserInfo, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminName: String, onDismiss: () -> Unit) {
-    var tempNombre by remember { mutableStateOf(user.nombre_completo) }
-    var tempPassword by remember { mutableStateOf("") }
-    var tempSuscripcionAdd by remember { mutableStateOf("") }
-    val currentSuscripcion by remember { mutableStateOf(user.dias_suscripcion) }
-    var premioConstancia by remember { mutableStateOf(user.premio_constancia == 1) }
-    var premioFuerza by remember { mutableStateOf(user.premio_fuerza == 1) }
-    var premioDeterminacion by remember { mutableStateOf(user.premio_determinacion == 1) }
-    var tempRecordPeso by remember { mutableStateOf(user.record_peso.toString()) }
-    var tempRecordTiempo by remember { mutableStateOf(user.record_tiempo.toString()) }
-    var tempPeso by remember { mutableStateOf(user.peso ?: "") }
-    var tempAltura by remember { mutableStateOf(user.altura ?: "") }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var isUpdating by remember { mutableStateOf(false) }
+    var tempNombre by remember { mutableStateOf(user.nombre_completo) }; var tempPass by remember { mutableStateOf("") }
+    var tempSuscripcionAdd by remember { mutableStateOf("") }; var premioConstancia by remember { mutableStateOf(user.premio_constancia == 1) }
+    var premioFuerza by remember { mutableStateOf(user.premio_fuerza == 1) }; var premioDeterminacion by remember { mutableStateOf(user.premio_determinacion == 1) }
+    var tempRecordWeight by remember { mutableStateOf(user.record_peso.toString()) }; var tempRecordTime by remember { mutableStateOf(user.record_tiempo.toString()) }
+    var tempWeight by remember { mutableStateOf(user.peso ?: "") }; var tempHeight by remember { mutableStateOf(user.altura ?: "") }
+    var tempGender by remember { mutableStateOf(user.genero ?: "Masculino") }
+    var showDelConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedBorderColor = Color(0xFFB39DDB),
-        unfocusedBorderColor = Color.Gray,
-        focusedLabelColor = Color(0xFFB39DDB),
-        unfocusedLabelColor = Color.Gray
-    )
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
         Card(modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.9f).clickable(enabled = false) {}, colors = CardDefaults.cardColors(containerColor = Color(0xFF220044))) {
@@ -501,25 +402,22 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                 HorizontalDivider(color = Color(0xFFB39DDB), modifier = Modifier.padding(vertical = 8.dp))
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                    OutlinedTextField(value = tempPass, onValueChange = { tempPass = it }, label = { Text("Nueva Contraseña (vacío para no cambiar)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, visualTransformation = PasswordVisualTransformation())
                     
-                    // CAMBIO DE CONTRASEÑA
-                    OutlinedTextField(
-                        value = tempPassword, 
-                        onValueChange = { tempPassword = it }, 
-                        label = { Text("Nueva Contraseña (vacío para no cambiar)") }, 
-                        modifier = Modifier.fillMaxWidth(), 
-                        colors = fieldColors,
-                        visualTransformation = PasswordVisualTransformation()
-                    )
+                    Text("Género", color = Color.White, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempGender = "Masculino" }) { RadioButton(selected = tempGender == "Masculino", onClick = { tempGender = "Masculino" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Masculino", color = Color.White) }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempGender = "Femenino" }) { RadioButton(selected = tempGender == "Femenino", onClick = { tempGender = "Femenino" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Femenino", color = Color.White) }
+                    }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        OutlinedTextField(value = tempPeso, onValueChange = { if (it.all { char -> char.isDigit() }) tempPeso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                        OutlinedTextField(value = tempWeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempWeight = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), colors = fieldColors)
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedTextField(value = tempAltura, onValueChange = { if (it.all { char -> char.isDigit() }) tempAltura = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                        OutlinedTextField(value = tempHeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempHeight = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors)
                     }
                     ExpandableSection("Retos y Récords") {
-                        OutlinedTextField(value = tempRecordPeso, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordPeso = it }, label = { Text("Máximo Levantado (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        OutlinedTextField(value = tempRecordTiempo, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTiempo = it }, label = { Text("Tiempo Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Levantado (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Tiempo Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                     }
                     ExpandableSection("Salón de la Fama") {
                         AwardSwitchRow("Premio Constancia", premioConstancia, user.fecha_premio_constancia) { premioConstancia = it }
@@ -527,31 +425,29 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                         AwardSwitchRow("Premio Determinación", premioDeterminacion, user.fecha_premio_determinacion) { premioDeterminacion = it }
                     }
                     Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                        Text("Suscripción: $currentSuscripcion días", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Suscripción: ${user.dias_suscripcion} días", color = Color.White, fontWeight = FontWeight.Bold)
                         OutlinedTextField(value = tempSuscripcionAdd, onValueChange = { if(it.all{c -> c.isDigit()}) tempSuscripcionAdd = it }, label = { Text("Añadir Días") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                     }
                     Button(onClick = {
                         isUpdating = true
                         scope.launch {
-                            val finalSuscripcion = currentSuscripcion + (tempSuscripcionAdd.toIntOrNull() ?: 0)
-                            val updated = user.copy(nombre_completo = tempNombre, peso = tempPeso, altura = tempAltura, dias_suscripcion = finalSuscripcion, record_peso = tempRecordPeso.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTiempo.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0)
-                            if (apiService.updateAdminUser(token, updated, adminName, tempPassword)) onDismiss()
+                            val finalSub = user.dias_suscripcion + (tempSuscripcionAdd.toIntOrNull() ?: 0)
+                            val updated = user.copy(nombre_completo = tempNombre, peso = tempWeight, altura = tempHeight, dias_suscripcion = finalSub, record_peso = tempRecordWeight.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTime.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0, genero = tempGender)
+                            if (apiService.updateAdminUser(token, updated, adminName, tempPass)) onDismiss()
                             isUpdating = false
                         }
-                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) }
-                    if (user.rol != "admin") { TextButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.padding(top = 8.dp), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Usuario", fontSize = 12.sp) } }
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { 
+                        if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) 
+                    }
+                    if (user.rol != "admin") { TextButton(onClick = { showDelConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Usuario") } }
                 }
             }
         }
     }
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            containerColor = Color(0xFF220044),
-            title = { Text("Confirmar Eliminación", color = Color.White) },
-            text = { Text("¿Seguro que quieres eliminar a ${user.nombre_completo}? Esta acción es irreversible.", color = Color.White.copy(alpha = 0.8f)) },
+    if (showDelConfirm) {
+        AlertDialog(onDismissRequest = { showDelConfirm = false }, containerColor = Color(0xFF220044), title = { Text("Confirmar Eliminación", color = Color.White) }, text = { Text("¿Eliminar a ${user.nombre_completo} definitivamente?", color = Color.White.copy(alpha = 0.8f)) }, 
             confirmButton = { TextButton(onClick = { scope.launch { if(apiService.deleteUser(token, user.id_usuario)) onDismiss() } }) { Text("ELIMINAR", color = Color(0xFFE57373), fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("CANCELAR", color = Color.White) } }
+            dismissButton = { TextButton(onClick = { showDelConfirm = false }) { Text("CANCELAR", color = Color.White) } }
         )
     }
 }
@@ -581,11 +477,9 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)).background(Color.Gray.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                articulo.foto_url?.let {
-                    val fullUrl = getFullImageUrl(it)
-                    if (fullUrl != null) { KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } 
-                    else { Icon(Icons.Default.ShoppingBag, null, tint = Color.White.copy(alpha = 0.5f)) }
-                } ?: Icon(Icons.Default.ShoppingBag, null, tint = Color.White.copy(alpha = 0.5f))
+                val fullUrl = getFullImageUrl(articulo.foto_url)
+                if (fullUrl != null) KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                else Icon(Icons.Default.ShoppingBag, null, tint = Color.White.copy(alpha = 0.5f))
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -600,35 +494,26 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShopManagementTab(articulos: List<Articulo>, isLoading: Boolean, onArticuloClick: (Articulo) -> Unit, onAddNew: () -> Unit) {
-    val products = articulos.filter { it.categoria == "Articulo" || it.categoria == "Suplemento" }
-    val apparel = articulos.filter { it.categoria == "Vestimenta" }
-
+    val prods = articulos.filter { it.categoria == "Articulo" || it.categoria == "Suplemento" }
+    val vest = articulos.filter { it.categoria == "Vestimenta" }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Gestión de Tienda", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+            Text("Tienda", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
             Button(onClick = onAddNew, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) {
-                Icon(Icons.Default.Add, null, tint = Color.Black)
-                Text("Nuevo", color = Color.Black)
+                Icon(Icons.Default.Add, null, tint = Color.Black); Text("Nuevo", color = Color.Black)
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
-        } else {
+        if (isLoading) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) } } 
+        else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
-                if (products.isNotEmpty()) {
-                    item { Text("Artículos", color = Color(0xFFB39DDB), fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp)) }
-                    items(products) { articulo -> ArticuloListItem(articulo, onClick = { onArticuloClick(articulo) }) }
+                if (prods.isNotEmpty()) {
+                    item { Text("Artículos", color = Color(0xFFB39DDB), fontWeight = FontWeight.Bold) }
+                    items(prods) { articulo -> ArticuloListItem(articulo, onClick = { onArticuloClick(articulo) }) }
                 }
-                
-                if (apparel.isNotEmpty()) {
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                    item { Text("Vestimenta", color = Color(0xFFE57373), fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp)) }
-                    items(apparel) { articulo -> ArticuloListItem(articulo, onClick = { onArticuloClick(articulo) }) }
-                }
-
-                if (articulos.isEmpty()) {
-                    item { Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) { Text("No hay artículos.", color = Color.Gray) } }
+                if (vest.isNotEmpty()) {
+                    item { Spacer(modifier = Modifier.height(16.dp)); Text("Vestimenta", color = Color(0xFFE57373), fontWeight = FontWeight.Bold) }
+                    items(vest) { articulo -> ArticuloListItem(articulo, onClick = { onArticuloClick(articulo) }) }
                 }
             }
         }
@@ -640,20 +525,12 @@ fun ShopManagementTab(articulos: List<Articulo>, isLoading: Boolean, onArticuloC
 fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: () -> Unit, onDismiss: () -> Unit) {
     var tempNombre by remember { mutableStateOf(articulo.nombre) }; var tempDesc by remember { mutableStateOf(articulo.descripcion ?: "") }
     var tempPrecio by remember { mutableStateOf(articulo.precio.toString()) }; var tempStock by remember { mutableStateOf(articulo.stock.toString()) }
-    var tempCategoria by remember { mutableStateOf(articulo.categoria) }; var mainPhotoUrl by remember { mutableStateOf(articulo.foto_url) }
+    var tempCat by remember { mutableStateOf(articulo.categoria) }; var mainPhoto by remember { mutableStateOf(articulo.foto_url) }
     val allPhotos = remember(articulo) { (listOf(articulo.foto_url) + (articulo.fotos_adicionales ?: emptyList())).filterNotNull().distinct() }
-    val fotosABorrar = remember { mutableStateListOf<String>() }; val fotosQueSeQuedan = allPhotos.filter { it !in fotosABorrar }
-    val newPhotos = remember { mutableStateListOf<ByteArray>() }
-    var showDeleteConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
+    val fotosABorrar = remember { mutableStateListOf<String>() }; val newPhotos = remember { mutableStateListOf<ByteArray>() }
+    var showDelConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedBorderColor = Color(0xFFB39DDB),
-        unfocusedBorderColor = Color.Gray,
-        focusedLabelColor = Color(0xFFB39DDB),
-        unfocusedLabelColor = Color.Gray
-    )
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
         Card(modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.85f).clickable(enabled = false) {}, colors = CardDefaults.cardColors(containerColor = Color(0xFF220044))) {
@@ -666,15 +543,10 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
                     if (allPhotos.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                             items(allPhotos) { url ->
-                                val isMarkedForDelete = url in fotosABorrar
-                                val fullUrl = getFullImageUrl(url)
-                                Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)).border(2.dp, if (mainPhotoUrl == url) Color(0xFFB39DDB) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { if (!isMarkedForDelete) mainPhotoUrl = url }) {
-                                    if (fullUrl != null) {
-                                        KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize().then(if(isMarkedForDelete) Modifier.background(Color.Black.copy(alpha = 0.6f)) else Modifier), contentScale = ContentScale.Crop)
-                                    }
-                                    IconButton(onClick = { if (isMarkedForDelete) fotosABorrar.remove(url) else fotosABorrar.add(url) }, modifier = Modifier.align(Alignment.TopEnd).size(20.dp).background(if(isMarkedForDelete) Color.Green else Color.Red, CircleShape)) {
-                                        Icon(if(isMarkedForDelete) Icons.Default.Add else Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                    }
+                                val isDel = url in fotosABorrar; val full = getFullImageUrl(url)
+                                Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)).border(2.dp, if (mainPhoto == url) Color(0xFFB39DDB) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { if (!isDel) mainPhoto = url }) {
+                                    if (full != null) KamelImage(resource = asyncPainterResource(data = full), contentDescription = null, modifier = Modifier.fillMaxSize().then(if(isDel) Modifier.background(Color.Black.copy(alpha = 0.6f)) else Modifier), contentScale = ContentScale.Crop)
+                                    IconButton(onClick = { if (isDel) fotosABorrar.remove(url) else fotosABorrar.add(url) }, modifier = Modifier.align(Alignment.TopEnd).size(20.dp).background(if(isDel) Color.Green else Color.Red, CircleShape)) { Icon(if(isDel) Icons.Default.Add else Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) }
                                 }
                             }
                         }
@@ -682,23 +554,15 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
                     Text("Agregar nuevas (${newPhotos.size})", color = Color.Gray, fontSize = 12.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(newPhotos) { index, _ -> Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)).background(Color.Gray), contentAlignment = Alignment.Center) { Icon(Icons.Default.Check, null, tint = Color.White); IconButton(onClick = { newPhotos.removeAt(index) }, modifier = Modifier.size(20.dp).align(Alignment.TopEnd).background(Color.Red, CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) } } }
-                        if (allPhotos.size + newPhotos.size < 5) { item { AddPhotoPlaceholder { if(it.isNotEmpty()) newPhotos.add(it) } } }
+                        if (allPhotos.size + newPhotos.size < 5) item { AddPhotoPlaceholder { if(it.isNotEmpty()) newPhotos.add(it) } }
                     }
                     OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                     OutlinedTextField(value = tempDesc, onValueChange = { tempDesc = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                    
-                    Text("Categoría", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    Text("Categoría", color = Color.White, fontSize = 12.sp)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCategoria = "Articulo" }) {
-                            RadioButton(selected = tempCategoria == "Articulo", onClick = { tempCategoria = "Articulo" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB), unselectedColor = Color.Gray))
-                            Text("Articulo", color = Color.White)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCategoria = "Vestimenta" }) {
-                            RadioButton(selected = tempCategoria == "Vestimenta", onClick = { tempCategoria = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB), unselectedColor = Color.Gray))
-                            Text("Vestimenta", color = Color.White)
-                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCat = "Articulo" }) { RadioButton(selected = tempCat == "Articulo", onClick = { tempCat = "Articulo" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Articulo", color = Color.White) }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCat = "Vestimenta" }) { RadioButton(selected = tempCat == "Vestimenta", onClick = { tempCat = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                     }
-
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = tempPrecio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempPrecio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors)
                         OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors)
@@ -706,24 +570,20 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
                     Button(onClick = {
                         isUpdating = true
                         scope.launch {
-                            val success = apiService.updateArticulo(articulo.id_articulo!!, tempNombre, tempDesc, tempPrecio.toDoubleOrNull() ?: 0.0, tempStock.toIntOrNull() ?: 0, tempCategoria, newPhotos.toList(), fotosQueSeQuedan, mainPhotoUrl)
+                            val success = apiService.updateArticulo(articulo.id_articulo!!, tempNombre, tempDesc, tempPrecio.toDoubleOrNull() ?: 0.0, tempStock.toIntOrNull() ?: 0, tempCat, newPhotos.toList(), allPhotos.filter { it !in fotosABorrar }, mainPhoto)
                             if (success) { onRefresh(); onDismiss() }
                             isUpdating = false
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) }
-                    TextButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Artículo") }
+                    TextButton(onClick = { showDelConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Artículo") }
                 }
             }
         }
     }
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            containerColor = Color(0xFF220044),
-            title = { Text("Confirmar Eliminación", color = Color.White) },
-            text = { Text("¿Eliminar este artículo definitivamente?", color = Color.White.copy(alpha = 0.8f)) },
+    if (showDelConfirm) {
+        AlertDialog(onDismissRequest = { showDelConfirm = false }, containerColor = Color(0xFF220044), title = { Text("Confirmar Eliminación", color = Color.White) }, text = { Text("¿Eliminar este artículo definitivamente?", color = Color.White.copy(alpha = 0.8f)) }, 
             confirmButton = { TextButton(onClick = { scope.launch { if(apiService.deleteArticulo(articulo.id_articulo!!)) { onRefresh(); onDismiss() } } }) { Text("ELIMINAR", color = Color(0xFFE57373), fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("CANCELAR", color = Color.White) } }
+            dismissButton = { TextButton(onClick = { showDelConfirm = false }) { Text("CANCELAR", color = Color.White) } }
         )
     }
 }
@@ -736,43 +596,28 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
     var categoria by remember { mutableStateOf("Articulo") }
     val selectedPhotos = remember { mutableStateListOf<ByteArray>() }
     var isSaving by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val apiService = remember { ApiService() }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedBorderColor = Color(0xFFB39DDB),
-        unfocusedBorderColor = Color.Gray,
-        focusedLabelColor = Color(0xFFB39DDB),
-        unfocusedLabelColor = Color.Gray
-    )
+    val scope = rememberCoroutineScope(); val apiService = remember { ApiService() }
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF220044),
+        onDismissRequest = onDismiss, 
+        containerColor = Color(0xFF220044), 
         title = { Text("Nuevo Artículo", color = Color.White) },
+        properties = DialogProperties(dismissOnClickOutside = false),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text("Imágenes (${selectedPhotos.size}/5)", color = Color.Gray, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(selectedPhotos) { index, _ -> Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp))) { Box(modifier = Modifier.fillMaxSize().background(Color.Gray), contentAlignment = Alignment.Center) { Icon(Icons.Default.Image, null, tint = Color.White) }; IconButton(onClick = { selectedPhotos.removeAt(index) }, modifier = Modifier.size(20.dp).align(Alignment.TopEnd).background(Color.Red, CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) } } }
-                    if (selectedPhotos.size < 5) { item { AddPhotoPlaceholder { if(it.isNotEmpty()) selectedPhotos.add(it) } } }
+                    if (selectedPhotos.size < 5) item { AddPhotoPlaceholder { if(it.isNotEmpty()) selectedPhotos.add(it) } }
                 }
                 OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") }, colors = fieldColors)
                 OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Descripción") }, colors = fieldColors)
-                
-                Text("Categoría", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Articulo" }) {
-                        RadioButton(selected = categoria == "Articulo", onClick = { categoria = "Articulo" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB), unselectedColor = Color.Gray))
-                        Text("Articulo", color = Color.White)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Vestimenta" }) {
-                        RadioButton(selected = categoria == "Vestimenta", onClick = { categoria = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB), unselectedColor = Color.Gray))
-                        Text("Vestimenta", color = Color.White)
-                    }
+                Text("Categoría", color = Color.White, fontSize = 12.sp)
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Articulo" }) { RadioButton(selected = categoria == "Articulo", onClick = { categoria = "Articulo" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Articulo", color = Color.White) }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Vestimenta" }) { RadioButton(selected = categoria == "Vestimenta", onClick = { categoria = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                 }
-
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = precio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) precio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors)
                     OutlinedTextField(value = stock, onValueChange = { if(it.all{c -> c.isDigit()}) stock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors)
@@ -788,8 +633,8 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
                     if (res) onArticuloCreated()
                     isSaving = false
                 }
-            }, enabled = !isSaving, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) {
-                if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("Guardar", color = Color.Black)
+            }, enabled = !isSaving, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { 
+                if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("Guardar", color = Color.Black) 
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = Color.White) } }
@@ -799,8 +644,8 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
 @Composable
 fun AddPhotoPlaceholder(onImageSelected: (ByteArray) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
-    if (showPicker) { ImagePicker { if(it.isNotEmpty()) onImageSelected(it); showPicker = false } }
-    Card(modifier = Modifier.size(80.dp).clickable { showPicker = true }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)), border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.3f))) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.AddAPhoto, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(24.dp)); Text("Añadir", color = Color.Gray, fontSize = 10.sp) } } }
+    if (showPicker) ImagePicker { if(it.isNotEmpty()) onImageSelected(it); showPicker = false }
+    Card(modifier = Modifier.size(80.dp).shadow(2.dp, RoundedCornerShape(12.dp)).clickable { showPicker = true }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)), border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.3f))) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.AddAPhoto, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(24.dp)); Text("Añadir", color = Color.Gray, fontSize = 10.sp) } } }
 }
 
 @Composable fun StatItemAdmin(icon: ImageVector, label: String, value: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(32.dp)); Text(value, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = Color.Gray) } }
