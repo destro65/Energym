@@ -11,6 +11,8 @@ interface SessionManager {
     fun saveLastDecrementDate(date: String)
     fun getLastKnownDays(): Int
     fun saveLastKnownDays(days: Int)
+    fun saveUserData(user: UserInfo)
+    fun getUserData(): UserInfo?
 }
 
 @Composable

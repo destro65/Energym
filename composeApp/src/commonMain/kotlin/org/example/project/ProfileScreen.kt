@@ -1,9 +1,16 @@
 package org.example.project
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,8 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,23 +38,116 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onUpdateUser: (UserInfo, ByteArray?) -> Unit
 ) {
-    var fbUrl by remember { mutableStateOf(userData?.fb_url ?: "") }
-    var igUrl by remember { mutableStateOf(userData?.ig_url ?: "") }
-    var tkUrl by remember { mutableStateOf(userData?.tk_url ?: "") }
-    var waNum by remember { mutableStateOf(userData?.wa_num ?: "") }
+    val apiService = remember { ApiService() }
+    val sessionManager = rememberSessionManager()
+    val scope = rememberCoroutineScope()
+
+    var fbUrl by remember(userData) { mutableStateOf(userData?.fb_url ?: "") }
+    var igUrl by remember(userData) { mutableStateOf(userData?.ig_url ?: "") }
+    var tkUrl by remember(userData) { mutableStateOf(userData?.tk_url ?: "") }
+    var waNum by remember(userData) { mutableStateOf(userData?.wa_num ?: "") }
     
+    // Estado para la foto actual (ya sea la original o una seleccionada de la galería)
+    var currentFotoUrl by remember(userData) { mutableStateOf(userData?.foto_url ?: "") }
     var selectedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
+    
+    var showSelectionDialog by remember { mutableStateOf(false) }
     var showImagePicker by remember { mutableStateOf(false) }
+    var showPhotoGallery by remember { mutableStateOf(false) }
+    var userPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    if (showSelectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showSelectionDialog = false },
+            containerColor = Color(0xFF220044),
+            title = { Text("Cambiar Foto", color = Color.White) },
+            text = { Text("¿Deseas subir una foto nueva o elegir una anterior?", color = Color.White.copy(alpha = 0.7f)) },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showSelectionDialog = false
+                    showImagePicker = true 
+                }) { Text("NUEVA", color = Color(0xFFB39DDB)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showSelectionDialog = false
+                    scope.launch {
+                        val token = sessionManager.getToken() ?: ""
+                        userPhotos = apiService.getUserPhotos(token, userData?.id_usuario ?: 0)
+                        showPhotoGallery = true
+                    }
+                }) { Text("GALERÍA", color = Color.White) }
+            }
+        )
+    }
 
     if (showImagePicker) {
         ImagePicker(
             onImageSelected = {
                 if (it.isNotEmpty()) {
                     selectedImageBytes = it
+                    currentFotoUrl = "" // Priorizar la nueva imagen
                 }
                 showImagePicker = false
             }
         )
+    }
+
+    if (showPhotoGallery) {
+        Dialog(onDismissRequest = { showPhotoGallery = false }) {
+            Card(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF220044)),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Tus Fotos Anteriores", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (userPhotos.isEmpty()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text("No tienes fotos guardadas", color = Color.Gray)
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(userPhotos) { url ->
+                                val fullUrl = getFullImageUrl(url)
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(2.dp, if (currentFotoUrl == url) Color(0xFFB39DDB) else Color.Transparent, RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            currentFotoUrl = url
+                                            selectedImageBytes = null
+                                            showPhotoGallery = false
+                                        }
+                                ) {
+                                    if (fullUrl != null) {
+                                        KamelImage(
+                                            resource = asyncPainterResource(data = fullUrl),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = { showPhotoGallery = false },
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))
+                    ) { Text("Cerrar", color = Color.Black) }
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -84,24 +187,28 @@ fun ProfileScreen(
                         modifier = Modifier
                             .size(120.dp)
                             .clip(CircleShape)
+                            .border(2.dp, Color(0xFFB39DDB), CircleShape)
                             .background(Color.White.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (selectedImageBytes != null) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(80.dp), tint = Color.Green)
-                        } else if (!userData?.foto_url.isNullOrEmpty()) {
-                            KamelImage(
-                                resource = asyncPainterResource(data = userData?.foto_url ?: ""),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
+                        } else if (currentFotoUrl.isNotEmpty()) {
+                            val fullUrl = getFullImageUrl(currentFotoUrl)
+                            if (fullUrl != null) {
+                                KamelImage(
+                                    resource = asyncPainterResource(data = fullUrl),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         } else {
                             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(80.dp), tint = Color.White.copy(alpha = 0.5f))
                         }
                     }
                     IconButton(
-                        onClick = { showImagePicker = true },
+                        onClick = { showSelectionDialog = true },
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -113,7 +220,6 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // CAMPOS DE INFORMACIÓN (Solo lectura)
                 ProfileInfoField(label = "Nombre Completo", value = userData?.nombre_completo ?: "No disponible")
                 ProfileInfoField(label = "Email", value = userData?.email ?: "No disponible")
                 
@@ -121,15 +227,16 @@ fun ProfileScreen(
                     Box(modifier = Modifier.weight(1f)) { ProfileInfoField(label = "Peso (kg)", value = userData?.peso ?: "0") }
                     Box(modifier = Modifier.weight(1f)) { ProfileInfoField(label = "Altura (cm)", value = userData?.altura ?: "0") }
                 }
+                
+                ProfileInfoField(label = "Edad", value = calcularEdad(userData?.fecha_nacimiento))
 
-                Divider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
                 Text("Redes Sociales", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
 
-                // CAMPOS EDITABLES: REDES SOCIALES
                 SocialInputField(value = fbUrl, onValueChange = { fbUrl = it }, label = "Facebook (URL)", icon = Icons.Default.Facebook)
                 SocialInputField(value = igUrl, onValueChange = { igUrl = it }, label = "Instagram (URL)", icon = Icons.Default.CameraAlt)
                 SocialInputField(value = tkUrl, onValueChange = { tkUrl = it }, label = "TikTok (URL)", icon = Icons.Default.MusicNote)
-                SocialInputField(value = waNum, onValueChange = { waNum = it }, label = "WhatsApp (Número ej: 5939...)", icon = Icons.Default.Chat)
+                SocialInputField(value = waNum, onValueChange = { waNum = it }, label = "WhatsApp (Número)", icon = Icons.Default.Chat)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -137,6 +244,7 @@ fun ProfileScreen(
                     onClick = {
                         userData?.let {
                             val updatedUser = it.copy(
+                                foto_url = currentFotoUrl,
                                 fb_url = fbUrl,
                                 ig_url = igUrl,
                                 tk_url = tkUrl,
@@ -165,6 +273,7 @@ fun ProfileInfoField(label: String, value: String) {
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
         readOnly = true,
+        singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = Color.LightGray,
             unfocusedTextColor = Color.LightGray,
@@ -183,6 +292,7 @@ fun SocialInputField(value: String, onValueChange: (String) -> Unit, label: Stri
         onValueChange = onValueChange,
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = Color.White,
             unfocusedTextColor = Color.White,

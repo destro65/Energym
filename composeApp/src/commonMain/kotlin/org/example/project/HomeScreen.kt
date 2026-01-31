@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 expect fun HomeScreen(
     onLogout: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onNavigateToNotifications: () -> Unit,
     onChangeGoal: () -> Unit,
     onNavigateToAdminPanel: (() -> Unit)? = null,
     userRank: String,
@@ -15,5 +16,5 @@ expect fun HomeScreen(
     isSubscriptionActive: Boolean,
     subscriptionDaysRemaining: Int?,
     userGoal: String,
-    userData: UserInfo? = null // NUEVO: Datos completos del usuario
+    userData: UserInfo? = null
 )

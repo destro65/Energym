@@ -1,7 +1,6 @@
 package org.example.project
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -15,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +42,6 @@ fun SocialScreen() {
     var isLoading by remember { mutableStateOf(true) }
     var filterMode by remember { mutableStateOf("Todos") }
     var selectedWinner by remember { mutableStateOf<UserInfo?>(null) }
-    var winnerAwardType by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         val token = sessionManager.getToken() ?: ""
@@ -50,42 +49,42 @@ fun SocialScreen() {
         isLoading = false
     }
 
-    val maleRanks = listOf("Debilucho", "Pecho de chifle", "Flaco", "Aceptable", "Medio Fuerte", "Fuerte", "Mamado", "Papiriqui")
+    val maleRanks = listOf("Novato", "Principiante", "Iniciado", "Avanzado", "Experto", "Elite", "Maestro", "Leyenda")
     val femaleRanks = listOf("Iniciada", "Activa", "Estilizada", "Fit", "Atlética", "Potente", "Amazona", "Diosa")
 
     fun getRank(user: UserInfo): String {
         val ranks = if (user.genero == "Femenino") femaleRanks else maleRanks
-        val isStrength = (user.record_peso >= user.record_tiempo)
-        
+        val isStrength = (user.record_peso >= user.record_tiempo.toDouble())
         val targets = if (user.genero == "Femenino") {
-            if (isStrength) listOf(5.0, 10.0, 18.0, 28.0, 40.0, 55.0, 75.0, 100.0) 
-            else listOf(3.0, 8.0, 15.0, 25.0, 40.0, 55.0, 75.0, 100.0)
+            if (isStrength) listOf(5.0, 10.0, 18.0, 28.0, 40.0, 52.0, 65.0, 80.0) 
+            else listOf(3.0, 8.0, 15.0, 25.0, 38.0, 52.0, 65.0, 80.0)
         } else {
             if (isStrength) listOf(10.0, 20.0, 35.0, 50.0, 65.0, 80.0, 90.0, 100.0)
             else listOf(5.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 100.0)
         }
-        
         val record = if (isStrength) user.record_peso else user.record_tiempo.toDouble()
         var rankIdx = 0
         for (i in targets.indices) { if (record >= targets[i]) rankIdx = i else break }
         return ranks[rankIdx]
     }
 
-    val filteredList = when(filterMode) {
-        "Masculino" -> userList.filter { it.genero == "Masculino" }
-        "Femenino" -> userList.filter { it.genero == "Femenino" }
-        else -> userList
+    val winners = remember(userList, filterMode) {
+        userList.filter { 
+            (it.premio_constancia == 1 || it.premio_fuerza == 1 || it.premio_determinacion == 1) &&
+            (filterMode == "Todos" || it.genero == filterMode)
+        }
     }
 
-    val winners = filteredList.filter { it.premio_constancia == 1 || it.premio_fuerza == 1 || it.premio_determinacion == 1 }
-    val topElite = filteredList.sortedByDescending { it.record_peso + (it.record_tiempo * 2) }.take(5)
+    val topElite = remember(userList, filterMode) {
+        val filtered = if (filterMode == "Todos") userList else userList.filter { it.genero == filterMode }
+        filtered.sortedByDescending { it.record_peso + (it.record_tiempo * 2) }.take(5)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black, Color(0xFF39006F))))) {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Text("Comunidad Energym", style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Bold)
                 Text("Filtra y conoce a la élite del gimnasio", color = Color.Gray, fontSize = 14.sp)
-                
                 Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Todos", "Masculino", "Femenino").forEach { mode ->
                         FilterChip(selected = filterMode == mode, onClick = { filterMode = mode }, label = { Text(mode) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFB39DDB), selectedLabelColor = Color.Black, labelColor = Color.White))
@@ -101,9 +100,7 @@ fun SocialScreen() {
                 item { Text("No hay ganadores en esta categoría.", color = Color.Gray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
             } else {
                 items(winners) { user ->
-                    if (user.premio_constancia == 1) AwardSocialCard(user, "Constancia", Icons.Default.EmojiEvents, Color(0xFFFFD700), getRank(user)) { selectedWinner = user; winnerAwardType = "Constancia" }
-                    if (user.premio_fuerza == 1) AwardSocialCard(user, "Fuerza", Icons.Default.FitnessCenter, Color(0xFFE57373), getRank(user)) { selectedWinner = user; winnerAwardType = "Fuerza" }
-                    if (user.premio_determinacion == 1) AwardSocialCard(user, "Determinación", Icons.Default.Star, Color(0xFF64B5F6), getRank(user)) { selectedWinner = user; winnerAwardType = "Determinación" }
+                    WinnerCard(user, getRank(user)) { selectedWinner = user }
                 }
             }
 
@@ -115,8 +112,17 @@ fun SocialScreen() {
                         topElite.forEachIndexed { index, user ->
                             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${index + 1}", color = Color(0xFFFFD700), fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.width(30.dp))
+                                Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                                    val fullUrl = getFullImageUrl(user.foto_url)
+                                    if (fullUrl != null) KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    else Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(24.dp))
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
+                                        if (user.genero == "Femenino") { Text(" ♀", color = Color(0xFFE57373), fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                                    }
                                     Text(getRank(user), color = Color(0xFFB39DDB), fontSize = 11.sp)
                                 }
                                 Text("${user.record_peso.toInt()} kg / ${user.record_tiempo} min", color = Color.Gray, fontSize = 10.sp)
@@ -130,46 +136,75 @@ fun SocialScreen() {
         }
 
         AnimatedVisibility(visible = selectedWinner != null, enter = fadeIn() + slideInVertically(), exit = fadeOut() + slideOutVertically()) {
-            selectedWinner?.let { WinnerDetailView(it, winnerAwardType) { selectedWinner = null } }
+            selectedWinner?.let { WinnerDetailView(it) { selectedWinner = null } }
         }
     }
 }
 
 @Composable
-fun AwardSocialCard(user: UserInfo, type: String, icon: ImageVector, color: Color, rank: String, onClick: () -> Unit) {
+fun WinnerCard(user: UserInfo, rank: String, onClick: () -> Unit) {
     Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(32.dp))
+            Box(modifier = Modifier.size(55.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                val fullUrl = getFullImageUrl(user.foto_url)
+                if (fullUrl != null) KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, contentScale = ContentScale.Crop)
+                else Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(30.dp))
+            }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
+                    if (user.genero == "Femenino") { Text(" ♀", color = Color(0xFFE57373), fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                }
                 Text(rank, color = Color(0xFFB39DDB), fontSize = 12.sp)
+                Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (user.premio_constancia == 1) Icon(Icons.Default.EmojiEvents, "Constancia", tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                    if (user.premio_fuerza == 1) Icon(Icons.Default.FitnessCenter, "Fuerza", tint = Color(0xFFE57373), modifier = Modifier.size(16.dp))
+                    if (user.premio_determinacion == 1) Icon(Icons.Default.Star, "Determinación", tint = Color(0xFF64B5F6), modifier = Modifier.size(16.dp))
+                }
             }
-            Text("Premio $type", color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Icon(Icons.Default.ChevronRight, null, tint = Color.White.copy(alpha = 0.3f))
         }
     }
 }
 
 @Composable
-fun WinnerDetailView(user: UserInfo, type: String, onDismiss: () -> Unit) {
+fun WinnerDetailView(user: UserInfo, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
         Card(modifier = Modifier.fillMaxWidth(0.85f).clickable(enabled = false) {}, colors = CardDefaults.cardColors(containerColor = Color(0xFF220044)), shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(modifier = Modifier.size(100.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                    if (!user.foto_url.isNullOrEmpty()) KamelImage(resource = asyncPainterResource(getFullImageUrl(user.foto_url)!!), contentDescription = null, contentScale = ContentScale.Crop)
-                    else Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(60.dp).align(Alignment.Center))
+                    val fullUrl = getFullImageUrl(user.foto_url)
+                    if (fullUrl != null) KamelImage(resource = asyncPainterResource(data = fullUrl), contentDescription = null, contentScale = ContentScale.Crop)
+                    else Icon(Icons.Default.Person, null, tint = Color.Gray, modifier = Modifier.size(60.dp))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(user.nombre_completo, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Premio a la $type", color = Color(0xFFB39DDB), fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color(0xFFB39DDB).copy(alpha = 0.1f))
+                
+                Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (user.premio_constancia == 1) BadgeAward("Constancia", Color(0xFFFFD700))
+                    if (user.premio_fuerza == 1) BadgeAward("Fuerza", Color(0xFFE57373))
+                    if (user.premio_determinacion == 1) BadgeAward("Éxito", Color(0xFF64B5F6))
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Detailed Stats
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    DetailStatItem("Récord Peso", "${user.record_peso} kg", Icons.Default.FitnessCenter, Color(0xFFE57373))
+                    DetailStatItem("Mejor Tiempo", "${user.record_tiempo} min", Icons.Default.Timer, Color(0xFF64B5F6))
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatBadgeSocial(label = "Peso", value = "${user.peso} kg")
-                    StatBadgeSocial(label = "Altura", value = "${user.altura} cm")
+                
+                user.fecha_registro?.split(" ")?.get(0)?.let { date ->
+                    Text(
+                        text = "Miembro desde: $date",
+                        color = Color.Gray,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -177,13 +212,28 @@ fun WinnerDetailView(user: UserInfo, type: String, onDismiss: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (!user.ig_url.isNullOrEmpty()) SocialIconSmall(Icons.Default.CameraAlt, Color(0xFFE4405F)) { uriHandler.openUri("https://instagram.com/${user.ig_url}") }
                     if (!user.fb_url.isNullOrEmpty()) SocialIconSmall(Icons.Default.Facebook, Color(0xFF1877F2)) { uriHandler.openUri("https://facebook.com/${user.fb_url}") }
-                    if (!user.wa_num.isNullOrEmpty()) SocialIconSmall(Icons.Default.Chat, Color(0xFF25D366)) { uriHandler.openUri("https://wa.me/${user.wa_num}") }
+                    if (!user.wa_num.isNullOrEmpty()) SocialIconSmall(Icons.AutoMirrored.Filled.Chat, Color(0xFF25D366)) { uriHandler.openUri("https://wa.me/${user.wa_num}") }
                 }
-
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { Text("Cerrar", color = Color.Black) }
             }
         }
+    }
+}
+
+@Composable
+fun DetailStatItem(label: String, value: String, icon: ImageVector, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+        Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(label, color = Color.Gray, fontSize = 11.sp)
+    }
+}
+
+@Composable
+fun BadgeAward(text: String, color: Color) {
+    Surface(color = color.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, color)) {
+        Text(text, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }
 

@@ -47,7 +47,6 @@ import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
 import kotlinx.coroutines.launch
 import kotlinx.datetime.*
-import kotlinx.datetime.Clock as KtClock
 
 @Composable
 expect fun ImagePicker(
@@ -55,11 +54,6 @@ expect fun ImagePicker(
     label: String = "Seleccionar Foto",
     onImageSelected: (ByteArray) -> Unit
 )
-
-fun getFullImageUrl(url: String?): String? {
-    if (url.isNullOrEmpty()) return null
-    return if (url.startsWith("http")) url else "http://192.168.100.86/api/$url"
-}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -82,13 +76,16 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
 
     var showAddUserDialog by remember { mutableStateOf(false) }
     var showAddArticuloDialog by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     fun refreshUsers() {
         scope.launch {
             isAdminLoading = true
             val token = sessionManager.getToken() ?: ""
-            userList = apiService.getUsers(token)
-            historyList = apiService.getSubscriptionHistory(token)
+            val users = apiService.getUsers(token)
+            val history = apiService.getSubscriptionHistory(token)
+            userList = users
+            historyList = history
             isAdminLoading = false
         }
     }
@@ -103,6 +100,17 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
 
     LaunchedEffect(Unit) { refreshUsers(); refreshArticulos() }
 
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            containerColor = Color(0xFF220044),
+            title = { Text("Cerrar Sesión", color = Color.White) },
+            text = { Text("¿Deseas salir del panel de administración?", color = Color.White.copy(alpha = 0.8f)) },
+            confirmButton = { TextButton(onClick = { showLogoutConfirm = false; onLogout() }) { Text("SALIR", color = Color(0xFFE57373)) } },
+            dismissButton = { TextButton(onClick = { showLogoutConfirm = false }) { Text("CANCELAR", color = Color.White) } }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -112,7 +120,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF39006F), titleContentColor = Color.White, actionIconContentColor = Color.White),
                     actions = {
                         IconButton(onClick = onSwitchToUserView) { Icon(Icons.Default.SwitchAccount, "Vista Usuario", tint = Color.White) }
-                        IconButton(onClick = onLogout) { Icon(Icons.AutoMirrored.Filled.ExitToApp, "Salir", tint = Color.White) }
+                        IconButton(onClick = { showLogoutConfirm = true }) { Icon(Icons.AutoMirrored.Filled.Logout, "Salir", tint = Color.White) }
                     }
                 )
                 SecondaryTabRow(
@@ -165,6 +173,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
     if (showAddUserDialog) {
         CreateUserDialog(apiService, snackbarHostState, { showAddUserDialog = false }, { 
             refreshUsers()
+            showAddUserDialog = false
             scope.launch { pagerState.animateScrollToPage(1) }
         })
     }
@@ -172,6 +181,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
     if (showAddArticuloDialog) {
         AddArticuloDialog({ showAddArticuloDialog = false }, { 
             refreshArticulos()
+            showAddArticuloDialog = false
             scope.launch { pagerState.animateScrollToPage(2) }
         })
     }
@@ -181,7 +191,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
 fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: List<SubscriptionHistory>) {
     val expiringUsers = userList.filter { it.rol == "normal" && it.dias_suscripcion in 1..4 }
     val usersLastMonth = remember(userList) {
-        val now = KtClock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         userList.count { user ->
             try {
                 val regDate = user.fecha_registro?.split(" ")?.get(0)?.let { LocalDate.parse(it) }
@@ -231,7 +241,7 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
             Column(modifier = Modifier.padding(16.dp)) {
                 if (historyList.isEmpty()) { Text("No hay registros.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) } 
                 else {
-                    historyList.take(10).forEach { item ->
+                    historyList.forEach { item ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.nombre_usuario, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -242,7 +252,7 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
                                 Text(item.fecha_accion.split(" ")[0], color = Color.Gray, fontSize = 10.sp)
                             }
                         }
-                        if (item != historyList.take(10).last()) HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                        if (item != historyList.last()) HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                     }
                 }
             }
@@ -255,7 +265,7 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
 fun UserGrowthLineChart(userList: List<UserInfo>) {
     val spanishMonths = listOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
     val monthsData = remember(userList) {
-        val now = KtClock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         (0..5).reversed().map { monthsBack ->
             val targetDate = now.minus(monthsBack, DateTimeUnit.MONTH)
             val monthIdx = targetDate.month
@@ -295,8 +305,19 @@ fun UserGrowthLineChart(userList: List<UserInfo>) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserManagementTab(userList: List<UserInfo>, isLoading: Boolean, onUserClick: (UserInfo) -> Unit, onAddNew: () -> Unit) {
-    val normalUsers = userList.filter { it.rol == "normal" }
-    val adminUsers = userList.filter { it.rol == "admin" }
+    var sortMode by remember { mutableStateOf("Suscripcion") }
+    
+    val sortedList = remember(userList, sortMode) {
+        when(sortMode) {
+            "Suscripcion" -> userList.sortedBy { it.dias_suscripcion }
+            "Fecha" -> userList.sortedByDescending { it.fecha_registro }
+            else -> userList.sortedBy { it.nombre_completo }
+        }
+    }
+
+    val normalUsers = sortedList.filter { it.rol == "normal" }
+    val adminUsers = sortedList.filter { it.rol == "admin" }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Usuarios", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
@@ -304,7 +325,29 @@ fun UserManagementTab(userList: List<UserInfo>, isLoading: Boolean, onUserClick:
                 Icon(Icons.Default.PersonAdd, null, tint = Color.Black); Text("Nuevo", color = Color.Black)
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = sortMode == "Suscripcion",
+                onClick = { sortMode = "Suscripcion" },
+                label = { Text("Días (Asc)") },
+                colors = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedContainerColor = Color(0xFFB39DDB))
+            )
+            FilterChip(
+                selected = sortMode == "Nombre",
+                onClick = { sortMode = "Nombre" },
+                label = { Text("Nombre") },
+                colors = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedContainerColor = Color(0xFFB39DDB))
+            )
+            FilterChip(
+                selected = sortMode == "Fecha",
+                onClick = { sortMode = "Fecha" },
+                label = { Text("Recientes") },
+                colors = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedContainerColor = Color(0xFFB39DDB))
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
         if (isLoading) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) } } 
         else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
@@ -323,7 +366,7 @@ fun UserManagementTab(userList: List<UserInfo>, isLoading: Boolean, onUserClick:
 fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostState, onDismiss: () -> Unit, onUserCreated: () -> Unit) {
     var nombre by remember { mutableStateOf("") }; var email by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }; var peso by remember { mutableStateOf("") }
-    var altura by remember { mutableStateOf("") }; var edad by remember { mutableStateOf("") }
+    var altura by remember { mutableStateOf("") }; var fechaNac by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
@@ -332,21 +375,30 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
         properties = DialogProperties(dismissOnClickOutside = false),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre Completo") }, textStyle = TextStyle(color = Color.White), colors = fieldColors)
-                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, textStyle = TextStyle(color = Color.White), colors = fieldColors)
-                OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), textStyle = TextStyle(color = Color.White), colors = fieldColors)
+                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre Completo") }, textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
+                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
+                OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = peso, onValueChange = { if(it.all { c -> c.isDigit() }) peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), textStyle = TextStyle(color = Color.White), colors = fieldColors)
-                    OutlinedTextField(value = altura, onValueChange = { if(it.all { c -> c.isDigit() }) altura = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), textStyle = TextStyle(color = Color.White), colors = fieldColors)
+                    OutlinedTextField(value = peso, onValueChange = { if(it.all { c -> c.isDigit() }) peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = altura, onValueChange = { if(it.all { c -> c.isDigit() }) altura = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
-                OutlinedTextField(value = edad, onValueChange = { if (it.all { c -> c.isDigit() }) edad = it }, label = { Text("Edad") }, modifier = Modifier.fillMaxWidth(), textStyle = TextStyle(color = Color.White), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = fieldColors)
+                OutlinedTextField(
+                    value = fechaNac, 
+                    onValueChange = { fechaNac = it.filter { char -> char.isDigit() }.take(8) }, 
+                    label = { Text("F. Nacimiento (AAAAMMDD)") }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    textStyle = TextStyle(color = Color.White), 
+                    colors = fieldColors, 
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
             }
         },
         confirmButton = {
             Button(onClick = {
                 if (nombre.isBlank() || email.isBlank() || pass.isBlank()) { scope.launch { snackbarHostState.showSnackbar("Completa los campos") }; return@Button }
                 scope.launch {
-                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, edad.toIntOrNull() ?: 0, "Masculino")
+                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, fechaNac, "Masculino")
                     if (res.error == null) onUserCreated() else res.error.let { snackbarHostState.showSnackbar(it) }
                 }
             }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { Text("Guardar", color = Color.Black) }
@@ -372,7 +424,7 @@ fun UserListItem(user: UserInfo, onClick: () -> Unit) {
                     if (user.premio_determinacion == 1) Icon(Icons.Default.Star, null, tint = Color(0xFF64B5F6), modifier = Modifier.size(18.dp).padding(end = 4.dp))
                     Text(user.nombre_completo, color = Color.White, fontWeight = FontWeight.Bold)
                 }
-                Text("Suscripción: ${user.dias_suscripcion} días", color = if (user.dias_suscripcion < 5) Color(0xFFE57373) else Color.Gray, fontSize = 11.sp)
+                Text("Suscripción: ${user.dias_suscripcion} días", color = if (user.dias_suscripcion < 5) Color(0xFFE57373) else Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
             }
             Icon(Icons.Default.ChevronRight, null, tint = Color.White.copy(alpha = 0.5f))
         }
@@ -388,9 +440,21 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
     var tempRecordWeight by remember { mutableStateOf(user.record_peso.toString()) }; var tempRecordTime by remember { mutableStateOf(user.record_tiempo.toString()) }
     var tempWeight by remember { mutableStateOf(user.peso ?: "") }; var tempHeight by remember { mutableStateOf(user.altura ?: "") }
     var tempGender by remember { mutableStateOf(user.genero ?: "Masculino") }
-    var showDelConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
+    var tempFechaNac by remember { mutableStateOf(user.fecha_nacimiento ?: "") }
+    
+    val ageCalculated = remember(tempFechaNac) { org.example.project.calcularEdad(tempFechaNac) }
+    
+    var showDeleteConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White, 
+        unfocusedTextColor = Color.White, 
+        disabledTextColor = Color.White,
+        focusedBorderColor = Color(0xFFB39DDB), 
+        unfocusedBorderColor = Color.Gray, 
+        focusedLabelColor = Color(0xFFB39DDB), 
+        unfocusedLabelColor = Color.Gray
+    )
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
         Card(modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.9f).clickable(enabled = false) {}, colors = CardDefaults.cardColors(containerColor = Color(0xFF220044))) {
@@ -401,8 +465,24 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                 }
                 HorizontalDivider(color = Color(0xFFB39DDB), modifier = Modifier.padding(vertical = 8.dp))
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                    OutlinedTextField(value = tempPass, onValueChange = { tempPass = it }, label = { Text("Nueva Contraseña (vacío para no cambiar)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, visualTransformation = PasswordVisualTransformation())
+                    OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true)
+                    
+                    OutlinedTextField(value = user.email, onValueChange = {}, label = { Text("Email") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, readOnly = true, enabled = true, singleLine = true)
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = tempFechaNac, 
+                            onValueChange = { tempFechaNac = it.filter { char -> char.isDigit() }.take(8) }, 
+                            label = { Text("F. Nac (AAAAMMDD)") },
+                            modifier = Modifier.weight(1.5f), 
+                            colors = fieldColors, 
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(value = ageCalculated, onValueChange = {}, label = { Text("Edad") }, modifier = Modifier.weight(0.5f), colors = fieldColors, readOnly = true, enabled = true, singleLine = true)
+                    }
+
+                    OutlinedTextField(value = tempPass, onValueChange = { tempPass = it }, label = { Text("Nueva Contraseña (vacío para no cambiar)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, visualTransformation = PasswordVisualTransformation(), singleLine = true)
                     
                     Text("Género", color = Color.White, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -411,13 +491,13 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        OutlinedTextField(value = tempWeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempWeight = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                        OutlinedTextField(value = tempWeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempWeight = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedTextField(value = tempHeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempHeight = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                        OutlinedTextField(value = tempHeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempHeight = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Retos y Récords") {
-                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Levantado (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Tiempo Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Levantado (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Tiempo Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Salón de la Fama") {
                         AwardSwitchRow("Premio Constancia", premioConstancia, user.fecha_premio_constancia) { premioConstancia = it }
@@ -426,28 +506,28 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                     }
                     Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)).padding(12.dp)) {
                         Text("Suscripción: ${user.dias_suscripcion} días", color = Color.White, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(value = tempSuscripcionAdd, onValueChange = { if(it.all{c -> c.isDigit()}) tempSuscripcionAdd = it }, label = { Text("Añadir Días") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = tempSuscripcionAdd, onValueChange = { if(it.all{c -> c.isDigit()}) tempSuscripcionAdd = it }, label = { Text("Añadir Días") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     Button(onClick = {
                         isUpdating = true
                         scope.launch {
                             val finalSub = user.dias_suscripcion + (tempSuscripcionAdd.toIntOrNull() ?: 0)
-                            val updated = user.copy(nombre_completo = tempNombre, peso = tempWeight, altura = tempHeight, dias_suscripcion = finalSub, record_peso = tempRecordWeight.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTime.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0, genero = tempGender)
+                            val updated = user.copy(nombre_completo = tempNombre, peso = tempWeight, altura = tempHeight, dias_suscripcion = finalSub, record_peso = tempRecordWeight.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTime.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0, genero = tempGender, fecha_nacimiento = tempFechaNac)
                             if (apiService.updateAdminUser(token, updated, adminName, tempPass)) onDismiss()
                             isUpdating = false
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { 
                         if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) 
                     }
-                    if (user.rol != "admin") { TextButton(onClick = { showDelConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Usuario") } }
+                    if (user.rol != "admin") { TextButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Usuario") } }
                 }
             }
         }
     }
-    if (showDelConfirm) {
-        AlertDialog(onDismissRequest = { showDelConfirm = false }, containerColor = Color(0xFF220044), title = { Text("Confirmar Eliminación", color = Color.White) }, text = { Text("¿Eliminar a ${user.nombre_completo} definitivamente?", color = Color.White.copy(alpha = 0.8f)) }, 
+    if (showDeleteConfirm) {
+        AlertDialog(onDismissRequest = { showDeleteConfirm = false }, containerColor = Color(0xFF220044), title = { Text("Confirmar Eliminación", color = Color.White) }, text = { Text("¿Eliminar a ${user.nombre_completo} definitivamente?", color = Color.White.copy(alpha = 0.8f)) }, 
             confirmButton = { TextButton(onClick = { scope.launch { if(apiService.deleteUser(token, user.id_usuario)) onDismiss() } }) { Text("ELIMINAR", color = Color(0xFFE57373), fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { showDelConfirm = false }) { Text("CANCELAR", color = Color.White) } }
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("CANCELAR", color = Color.White) } }
         )
     }
 }
@@ -556,16 +636,16 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
                         itemsIndexed(newPhotos) { index, _ -> Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)).background(Color.Gray), contentAlignment = Alignment.Center) { Icon(Icons.Default.Check, null, tint = Color.White); IconButton(onClick = { newPhotos.removeAt(index) }, modifier = Modifier.size(20.dp).align(Alignment.TopEnd).background(Color.Red, CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) } } }
                         if (allPhotos.size + newPhotos.size < 5) item { AddPhotoPlaceholder { if(it.isNotEmpty()) newPhotos.add(it) } }
                     }
-                    OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                    OutlinedTextField(value = tempNombre, onValueChange = { tempNombre = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true)
                     OutlinedTextField(value = tempDesc, onValueChange = { tempDesc = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                     Text("Categoría", color = Color.White, fontSize = 12.sp)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCat = "Articulo" }) { RadioButton(selected = tempCat == "Articulo", onClick = { tempCat = "Articulo" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Articulo", color = Color.White) }
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCat = "Vestimenta" }) { RadioButton(selected = tempCat == "Vestimenta", onClick = { tempCat = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = tempPrecio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempPrecio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors)
-                        OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                        OutlinedTextField(value = tempPrecio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempPrecio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     Button(onClick = {
                         isUpdating = true
@@ -592,7 +672,7 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
 @Composable
 fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
     var nombre by remember { mutableStateOf("") }; var desc by remember { mutableStateOf("") }
-    var precio by remember { mutableStateOf("") }; var stock by remember { mutableStateOf("") }
+    var precio by remember { mutableStateOf("") }; var tempStock by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("Articulo") }
     val selectedPhotos = remember { mutableStateListOf<ByteArray>() }
     var isSaving by remember { mutableStateOf(false) }
@@ -611,7 +691,7 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
                     itemsIndexed(selectedPhotos) { index, _ -> Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp))) { Box(modifier = Modifier.fillMaxSize().background(Color.Gray), contentAlignment = Alignment.Center) { Icon(Icons.Default.Image, null, tint = Color.White) }; IconButton(onClick = { selectedPhotos.removeAt(index) }, modifier = Modifier.size(20.dp).align(Alignment.TopEnd).background(Color.Red, CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) } } }
                     if (selectedPhotos.size < 5) item { AddPhotoPlaceholder { if(it.isNotEmpty()) selectedPhotos.add(it) } }
                 }
-                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") }, colors = fieldColors)
+                OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre") }, colors = fieldColors, singleLine = true)
                 OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Descripción") }, colors = fieldColors)
                 Text("Categoría", color = Color.White, fontSize = 12.sp)
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -619,8 +699,8 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Vestimenta" }) { RadioButton(selected = categoria == "Vestimenta", onClick = { categoria = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = precio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) precio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors)
-                    OutlinedTextField(value = stock, onValueChange = { if(it.all{c -> c.isDigit()}) stock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors)
+                    OutlinedTextField(value = precio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) precio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
             }
         },
@@ -629,7 +709,7 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
                 if (nombre.isBlank() || precio.isBlank()) return@Button
                 isSaving = true
                 scope.launch {
-                    val res = apiService.createArticulo(nombre, desc, precio.toDoubleOrNull() ?: 0.0, stock.toIntOrNull() ?: 0, categoria, selectedPhotos.toList())
+                    val res = apiService.createArticulo(nombre, desc, precio.toDoubleOrNull() ?: 0.0, tempStock.toIntOrNull() ?: 0, categoria, selectedPhotos.toList())
                     if (res) onArticuloCreated()
                     isSaving = false
                 }
@@ -645,7 +725,7 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
 fun AddPhotoPlaceholder(onImageSelected: (ByteArray) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     if (showPicker) ImagePicker { if(it.isNotEmpty()) onImageSelected(it); showPicker = false }
-    Card(modifier = Modifier.size(80.dp).shadow(2.dp, RoundedCornerShape(12.dp)).clickable { showPicker = true }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)), border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.3f))) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.AddAPhoto, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(24.dp)); Text("Añadir", color = Color.Gray, fontSize = 10.sp) } } }
+    Card(modifier = Modifier.size(80.dp).shadow(elevation = 2.dp, shape = RoundedCornerShape(12.dp)).clickable { showPicker = true }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)), border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.3f))) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.AddAPhoto, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(24.dp)); Text("Añadir", color = Color.Gray, fontSize = 10.sp) } } }
 }
 
 @Composable fun StatItemAdmin(icon: ImageVector, label: String, value: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = Color(0xFFB39DDB), modifier = Modifier.size(32.dp)); Text(value, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = Color.Gray) } }
