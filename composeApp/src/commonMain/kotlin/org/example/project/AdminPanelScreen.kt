@@ -35,10 +35,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +68,6 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
     val snackbarHostState = remember { SnackbarHostState() }
     
     var selectedUser by remember { mutableStateOf<UserInfo?>(null) }
-    var selectedArticulo by remember { mutableStateOf<Articulo?>(null) }
     var userList by remember { mutableStateOf<List<UserInfo>>(emptyList()) }
     var articulosList by remember { mutableStateOf<List<Articulo>>(emptyList()) }
     var historyList by remember { mutableStateOf<List<SubscriptionHistory>>(emptyList()) }
@@ -141,7 +142,7 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                 when (page) {
                     0 -> AdminDashboardTab(adminName, userList, historyList)
                     1 -> UserManagementTab(userList, isAdminLoading, { selectedUser = it }, { showAddUserDialog = true })
-                    2 -> ShopManagementTab(articulosList, isArticulosLoading, { selectedArticulo = it }, { showAddArticuloDialog = true })
+                    2 -> ShopManagementTab(articulosList, isArticulosLoading, {  }, { showAddArticuloDialog = true })
                 }
             }
             
@@ -156,17 +157,6 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                     )
                 }
             }
-
-            AnimatedVisibility(visible = selectedArticulo != null) {
-                selectedArticulo?.let { articulo ->
-                    ArticuloDetailView(
-                        articulo = articulo,
-                        apiService = apiService,
-                        onRefresh = { refreshArticulos() },
-                        onDismiss = { selectedArticulo = null }
-                    )
-                }
-            }
         }
     }
 
@@ -174,7 +164,6 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
         CreateUserDialog(apiService, snackbarHostState, { showAddUserDialog = false }, { 
             refreshUsers()
             showAddUserDialog = false
-            scope.launch { pagerState.animateScrollToPage(1) }
         })
     }
 
@@ -182,7 +171,6 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
         AddArticuloDialog({ showAddArticuloDialog = false }, { 
             refreshArticulos()
             showAddArticuloDialog = false
-            scope.launch { pagerState.animateScrollToPage(2) }
         })
     }
 }
@@ -366,7 +354,8 @@ fun UserManagementTab(userList: List<UserInfo>, isLoading: Boolean, onUserClick:
 fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostState, onDismiss: () -> Unit, onUserCreated: () -> Unit) {
     var nombre by remember { mutableStateOf("") }; var email by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }; var peso by remember { mutableStateOf("") }
-    var altura by remember { mutableStateOf("") }; var fechaNac by remember { mutableStateOf("") }
+    var altura by remember { mutableStateOf("") }
+    var fechaNac by remember { mutableStateOf(TextFieldValue("")) }
     val scope = rememberCoroutineScope()
     val fieldColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Color(0xFFB39DDB), unfocusedBorderColor = Color.Gray, focusedLabelColor = Color(0xFFB39DDB), unfocusedLabelColor = Color.Gray)
 
@@ -376,7 +365,18 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(value = nombre, onValueChange = { nombre = it }, label = { Text("Nombre Completo") }, textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
-                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
+                OutlinedTextField(
+                    value = email, 
+                    onValueChange = { email = it }, 
+                    label = { Text("Email") }, 
+                    textStyle = TextStyle(color = Color.White), 
+                    colors = fieldColors, 
+                    singleLine = true,
+                    isError = email.isNotEmpty() && !email.contains("@")
+                )
+                if (email.isNotEmpty() && !email.contains("@")) {
+                    Text("Email inválido (falta @)", color = Color.Red, fontSize = 10.sp)
+                }
                 OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = peso, onValueChange = { if(it.all { c -> c.isDigit() }) peso = it }, label = { Text("Peso (kg)") }, modifier = Modifier.weight(1f), textStyle = TextStyle(color = Color.White), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -384,8 +384,37 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
                 }
                 OutlinedTextField(
                     value = fechaNac, 
-                    onValueChange = { fechaNac = it.filter { char -> char.isDigit() }.take(8) }, 
-                    label = { Text("F. Nacimiento (AAAAMMDD)") }, 
+                    onValueChange = { tfv -> 
+                        val input = tfv.text
+                        val digits = input.filter { it.isDigit() }.take(8)
+                        val formatted = buildString {
+                            if (digits.length >= 1) append(digits.substring(0, minOf(digits.length, 4)))
+                            if (digits.length >= 5) {
+                                append("-")
+                                val m = digits.substring(4, minOf(digits.length, 6))
+                                val mInt = m.toIntOrNull() ?: 0
+                                if (m.length == 2 && mInt > 12) append("12")
+                                else if (m.length == 2 && mInt == 0) append("01")
+                                else append(m)
+                            }
+                            if (digits.length >= 7) {
+                                append("-")
+                                val d = digits.substring(6, minOf(digits.length, 8))
+                                val dInt = d.toIntOrNull() ?: 0
+                                if (d.length == 2 && dInt > 31) append("31")
+                                else if (d.length == 2 && dInt == 0) append("01")
+                                else append(d)
+                            }
+                        }
+                        
+                        var newSelection = tfv.selection.start
+                        if (tfv.text.length < formatted.length) {
+                           if (newSelection == 5 || newSelection == 8) newSelection++
+                        }
+                        
+                        fechaNac = TextFieldValue(formatted, TextRange(newSelection.coerceAtMost(formatted.length)))
+                    }, 
+                    label = { Text("F. Nacimiento (AAAA-MM-DD)") }, 
                     modifier = Modifier.fillMaxWidth(), 
                     textStyle = TextStyle(color = Color.White), 
                     colors = fieldColors, 
@@ -397,8 +426,9 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
         confirmButton = {
             Button(onClick = {
                 if (nombre.isBlank() || email.isBlank() || pass.isBlank()) { scope.launch { snackbarHostState.showSnackbar("Completa los campos") }; return@Button }
+                if (!email.contains("@")) { scope.launch { snackbarHostState.showSnackbar("Email inválido") }; return@Button }
                 scope.launch {
-                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, fechaNac, "Masculino")
+                    val res = apiService.register(nombre, email, pass, "normal", peso, altura, fechaNac.text, "Masculino")
                     if (res.error == null) onUserCreated() else res.error.let { snackbarHostState.showSnackbar(it) }
                 }
             }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { Text("Guardar", color = Color.Black) }
@@ -440,9 +470,10 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
     var tempRecordWeight by remember { mutableStateOf(user.record_peso.toString()) }; var tempRecordTime by remember { mutableStateOf(user.record_tiempo.toString()) }
     var tempWeight by remember { mutableStateOf(user.peso ?: "") }; var tempHeight by remember { mutableStateOf(user.altura ?: "") }
     var tempGender by remember { mutableStateOf(user.genero ?: "Masculino") }
-    var tempFechaNac by remember { mutableStateOf(user.fecha_nacimiento ?: "") }
+    var tempFechaNac by remember { mutableStateOf(TextFieldValue(user.fecha_nacimiento ?: "")) }
+    var tempRol by remember { mutableStateOf(user.rol) }
     
-    val ageCalculated = remember(tempFechaNac) { org.example.project.calcularEdad(tempFechaNac) }
+    val ageCalculated = remember(tempFechaNac.text) { org.example.project.calcularEdad(tempFechaNac.text) }
     
     var showDeleteConfirm by remember { mutableStateOf(false) }; var isUpdating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -460,7 +491,13 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
         Card(modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.9f).clickable(enabled = false) {}, colors = CardDefaults.cardColors(containerColor = Color(0xFF220044))) {
             Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Editar Usuario", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Editar Usuario", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Delete, "Eliminar", tint = Color.Red, modifier = Modifier.size(20.dp))
+                        }
+                    }
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null, tint = Color.White) }
                 }
                 HorizontalDivider(color = Color(0xFFB39DDB), modifier = Modifier.padding(vertical = 8.dp))
@@ -472,8 +509,37 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = tempFechaNac, 
-                            onValueChange = { tempFechaNac = it.filter { char -> char.isDigit() }.take(8) }, 
-                            label = { Text("F. Nac (AAAAMMDD)") },
+                            onValueChange = { tfv -> 
+                                val input = tfv.text
+                                val clean = input.replace("-", "").filter { it.isDigit() }.take(8)
+                                val formatted = buildString {
+                                    if (clean.isNotEmpty()) append(clean.substring(0, minOf(clean.length, 4)))
+                                    if (clean.length >= 5) {
+                                        append("-")
+                                        val m = clean.substring(4, minOf(clean.length, 6))
+                                        val mInt = m.toIntOrNull() ?: 0
+                                        if (m.length == 2 && mInt > 12) append("12")
+                                        else if (m.length == 2 && mInt == 0) append("01")
+                                        else append(m)
+                                    }
+                                    if (clean.length >= 7) {
+                                        append("-")
+                                        val d = clean.substring(6, minOf(clean.length, 8))
+                                        val dInt = d.toIntOrNull() ?: 0
+                                        if (d.length == 2 && dInt > 31) append("31")
+                                        else if (d.length == 2 && dInt == 0) append("01")
+                                        else append(d)
+                                    }
+                                }
+                                
+                                var newSelection = tfv.selection.start
+                                if (tfv.text.length < formatted.length) {
+                                   if (newSelection == 5 || newSelection == 8) newSelection++
+                                }
+
+                                tempFechaNac = TextFieldValue(formatted, TextRange(newSelection.coerceAtMost(formatted.length)))
+                            }, 
+                            label = { Text("F. Nac (AAAA-MM-DD)") }, 
                             modifier = Modifier.weight(1.5f), 
                             colors = fieldColors, 
                             singleLine = true,
@@ -484,6 +550,19 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
 
                     OutlinedTextField(value = tempPass, onValueChange = { tempPass = it }, label = { Text("Nueva Contraseña (vacío para no cambiar)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, visualTransformation = PasswordVisualTransformation(), singleLine = true)
                     
+                    ExpandableSection("Avanzado (Rol del Usuario)") {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempRol = "normal" }) {
+                                RadioButton(selected = tempRol == "normal", onClick = { tempRol = "normal" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB)))
+                                Text("Usuario Normal", color = Color.White)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempRol = "admin" }) {
+                                RadioButton(selected = tempRol == "admin", onClick = { tempRol = "admin" }, colors = RadioButtonDefaults.colors(selectedColor = Color.Red))
+                                Text("Administrador", color = Color.White)
+                            }
+                        }
+                    }
+
                     Text("Género", color = Color.White, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempGender = "Masculino" }) { RadioButton(selected = tempGender == "Masculino", onClick = { tempGender = "Masculino" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Masculino", color = Color.White) }
@@ -496,8 +575,8 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                         OutlinedTextField(value = tempHeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempHeight = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Retos y Récords") {
-                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Levantado (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Tiempo Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Peso (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Salón de la Fama") {
                         AwardSwitchRow("Premio Constancia", premioConstancia, user.fecha_premio_constancia) { premioConstancia = it }
@@ -512,14 +591,13 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                         isUpdating = true
                         scope.launch {
                             val finalSub = user.dias_suscripcion + (tempSuscripcionAdd.toIntOrNull() ?: 0)
-                            val updated = user.copy(nombre_completo = tempNombre, peso = tempWeight, altura = tempHeight, dias_suscripcion = finalSub, record_peso = tempRecordWeight.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTime.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0, genero = tempGender, fecha_nacimiento = tempFechaNac)
+                            val updated = user.copy(nombre_completo = tempNombre, peso = tempWeight, altura = tempHeight, dias_suscripcion = finalSub, record_peso = tempRecordWeight.toDoubleOrNull() ?: 0.0, record_tiempo = tempRecordTime.toIntOrNull() ?: 0, premio_constancia = if(premioConstancia) 1 else 0, premio_fuerza = if(premioFuerza) 1 else 0, premio_determinacion = if(premioDeterminacion) 1 else 0, genero = tempGender, fecha_nacimiento = tempFechaNac.text, rol = tempRol)
                             if (apiService.updateAdminUser(token, updated, adminName, tempPass)) onDismiss()
                             isUpdating = false
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB39DDB))) { 
                         if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White) else Text("Guardar Cambios", color = Color.Black) 
                     }
-                    if (user.rol != "admin") { TextButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE57373))) { Text("Eliminar Usuario") } }
                 }
             }
         }

@@ -182,33 +182,33 @@ fun WinnerDetailView(user: UserInfo, onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(user.nombre_completo, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 
-                Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (user.premio_constancia == 1) BadgeAward("Constancia", Color(0xFFFFD700))
-                    if (user.premio_fuerza == 1) BadgeAward("Fuerza", Color(0xFFE57373))
-                    if (user.premio_determinacion == 1) BadgeAward("Éxito", Color(0xFF64B5F6))
+                Column(modifier = Modifier.padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (user.premio_constancia == 1) {
+                        BadgeAward("Constancia", Color(0xFFFFD700))
+                        Text("Otorgado: ${user.fecha_premio_constancia ?: "N/A"}", color = Color.Gray, fontSize = 10.sp)
+                    }
+                    if (user.premio_fuerza == 1) {
+                        BadgeAward("Fuerza", Color(0xFFE57373))
+                        Text("Otorgado: ${user.fecha_premio_fuerza ?: "N/A"}", color = Color.Gray, fontSize = 10.sp)
+                    }
+                    if (user.premio_determinacion == 1) {
+                        BadgeAward("Éxito", Color(0xFF64B5F6))
+                        Text("Otorgado: ${user.fecha_premio_determinacion ?: "N/A"}", color = Color.Gray, fontSize = 10.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                
-                // Detailed Stats
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     DetailStatItem("Récord Peso", "${user.record_peso} kg", Icons.Default.FitnessCenter, Color(0xFFE57373))
                     DetailStatItem("Mejor Tiempo", "${user.record_tiempo} min", Icons.Default.Timer, Color(0xFF64B5F6))
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
-                
                 user.fecha_registro?.split(" ")?.get(0)?.let { date ->
-                    Text(
-                        text = "Miembro desde: $date",
-                        color = Color.Gray,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("Miembro desde: $date", color = Color.Gray, fontSize = 12.sp)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (!user.ig_url.isNullOrEmpty()) SocialIconSmall(Icons.Default.CameraAlt, Color(0xFFE4405F)) { uriHandler.openUri("https://instagram.com/${user.ig_url}") }
                     if (!user.fb_url.isNullOrEmpty()) SocialIconSmall(Icons.Default.Facebook, Color(0xFF1877F2)) { uriHandler.openUri("https://facebook.com/${user.fb_url}") }

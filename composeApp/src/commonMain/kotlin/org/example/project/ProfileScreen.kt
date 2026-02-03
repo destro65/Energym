@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -46,8 +48,9 @@ fun ProfileScreen(
     var igUrl by remember(userData) { mutableStateOf(userData?.ig_url ?: "") }
     var tkUrl by remember(userData) { mutableStateOf(userData?.tk_url ?: "") }
     var waNum by remember(userData) { mutableStateOf(userData?.wa_num ?: "") }
+    var peso by remember(userData) { mutableStateOf(userData?.peso ?: "") }
+    var altura by remember(userData) { mutableStateOf(userData?.altura ?: "") }
     
-    // Estado para la foto actual (ya sea la original o una seleccionada de la galería)
     var currentFotoUrl by remember(userData) { mutableStateOf(userData?.foto_url ?: "") }
     var selectedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
     
@@ -86,7 +89,7 @@ fun ProfileScreen(
             onImageSelected = {
                 if (it.isNotEmpty()) {
                     selectedImageBytes = it
-                    currentFotoUrl = "" // Priorizar la nueva imagen
+                    currentFotoUrl = ""
                 }
                 showImagePicker = false
             }
@@ -181,7 +184,6 @@ fun ProfileScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // APARTADO DE FOTO DE PERFIL
                 Box(contentAlignment = Alignment.BottomEnd) {
                     Box(
                         modifier = Modifier
@@ -224,8 +226,34 @@ fun ProfileScreen(
                 ProfileInfoField(label = "Email", value = userData?.email ?: "No disponible")
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Box(modifier = Modifier.weight(1f)) { ProfileInfoField(label = "Peso (kg)", value = userData?.peso ?: "0") }
-                    Box(modifier = Modifier.weight(1f)) { ProfileInfoField(label = "Altura (cm)", value = userData?.altura ?: "0") }
+                    OutlinedTextField(
+                        value = peso,
+                        onValueChange = { if(it.all { c -> c.isDigit() || c == '.' }) peso = it },
+                        label = { Text("Peso (kg)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFB39DDB),
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = altura,
+                        onValueChange = { if(it.all { c -> c.isDigit() }) altura = it },
+                        label = { Text("Altura (cm)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFB39DDB),
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                 }
                 
                 ProfileInfoField(label = "Edad", value = calcularEdad(userData?.fecha_nacimiento))
@@ -245,6 +273,8 @@ fun ProfileScreen(
                         userData?.let {
                             val updatedUser = it.copy(
                                 foto_url = currentFotoUrl,
+                                peso = peso,
+                                altura = altura,
                                 fb_url = fbUrl,
                                 ig_url = igUrl,
                                 tk_url = tkUrl,

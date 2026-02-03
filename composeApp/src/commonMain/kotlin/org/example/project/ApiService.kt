@@ -14,7 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.datetime.*
 
 // --- CONFIGURACIÓN GLOBAL DE RED ---
-const val SERVER_IP = "192.168.100.14"
+const val SERVER_IP = "192.168.100.35"
 const val BASE_URL = "http://$SERVER_IP/api"
 
 private val jsonConfig = Json {
@@ -291,6 +291,8 @@ class ApiService {
         return try {
             val response = apiClient.submitFormWithBinaryData(url = "$baseUrl/users.php?id=${user.id_usuario}&action=update", formData = formData {
                 append("nombre_completo", user.nombre_completo); 
+                append("peso", user.peso ?: "0")
+                append("altura", user.altura ?: "0")
                 append("fb_url", user.fb_url ?: ""); 
                 append("ig_url", user.ig_url ?: "")
                 append("tk_url", user.tk_url ?: ""); 
@@ -319,6 +321,7 @@ class ApiService {
         return try {
             apiClient.submitForm(url = "$baseUrl/users.php?id=${user.id_usuario}&action=update", formParameters = parameters {
                 append("nombre_completo", user.nombre_completo); 
+                append("rol", user.rol)
                 append("peso", user.peso ?: ""); 
                 append("altura", user.altura ?: "")
                 append("genero", user.genero ?: "Masculino")
