@@ -26,7 +26,6 @@ fun GoalSelectionScreen(onGoalSelected: (String) -> Unit) {
     val goals = listOf(
         "Ganar Masa Muscular" to "Enfocado en hipertrofia y aumento de volumen muscular mediante levantamiento de pesas y superávit calórico.",
         "Perder Peso" to "Diseñado para crear un déficit calórico y quemar grasa corporal mediante cardio y entrenamiento de fuerza.",
-        "Mejorar Resistencia" to "Entrenamientos aeróbicos y de alta intensidad (HIIT) para fortalecer el sistema cardiovascular y la resistencia física.",
         "Definición" to "Busca resaltar la musculatura reduciendo el porcentaje de grasa corporal manteniendo la masa muscular existente."
     )
 

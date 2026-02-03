@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -66,8 +67,10 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
     val apiService = remember { ApiService() }
     val sessionManager = rememberSessionManager()
     val snackbarHostState = remember { SnackbarHostState() }
+    val uriHandler = LocalUriHandler.current
     
     var selectedUser by remember { mutableStateOf<UserInfo?>(null) }
+    var selectedArticulo by remember { mutableStateOf<Articulo?>(null) }
     var userList by remember { mutableStateOf<List<UserInfo>>(emptyList()) }
     var articulosList by remember { mutableStateOf<List<Articulo>>(emptyList()) }
     var historyList by remember { mutableStateOf<List<SubscriptionHistory>>(emptyList()) }
@@ -140,9 +143,12 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding).background(brush = Brush.verticalGradient(colors = listOf(Color.Black, Color(0xFF39006F))))) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 when (page) {
-                    0 -> AdminDashboardTab(adminName, userList, historyList)
+                    0 -> AdminDashboardTab(adminName, userList, historyList, onExportClick = {
+                        val token = sessionManager.getToken() ?: ""
+                        uriHandler.openUri("$BASE_URL/users.php?action=export&token=$token")
+                    })
                     1 -> UserManagementTab(userList, isAdminLoading, { selectedUser = it }, { showAddUserDialog = true })
-                    2 -> ShopManagementTab(articulosList, isArticulosLoading, {  }, { showAddArticuloDialog = true })
+                    2 -> ShopManagementTab(articulosList, isArticulosLoading, { selectedArticulo = it }, { showAddArticuloDialog = true })
                 }
             }
             
@@ -154,6 +160,17 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
                         token = sessionManager.getToken() ?: "",
                         adminName = adminName,
                         onDismiss = { selectedUser = null; refreshUsers() }
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = selectedArticulo != null) {
+                selectedArticulo?.let { articulo ->
+                    ArticuloDetailView(
+                        articulo = articulo,
+                        apiService = apiService,
+                        onRefresh = { refreshArticulos() },
+                        onDismiss = { selectedArticulo = null }
                     )
                 }
             }
@@ -176,10 +193,10 @@ fun AdminPanelScreen(adminName: String, onLogout: () -> Unit, onSwitchToUserView
 }
 
 @Composable
-fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: List<SubscriptionHistory>) {
+fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: List<SubscriptionHistory>, onExportClick: () -> Unit) {
     val expiringUsers = userList.filter { it.rol == "normal" && it.dias_suscripcion in 1..4 }
     val usersLastMonth = remember(userList) {
-        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val now = kotlinx.datetime.Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         userList.count { user ->
             try {
                 val regDate = user.fecha_registro?.split(" ")?.get(0)?.let { LocalDate.parse(it) }
@@ -191,9 +208,17 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("¡Bienvenido, $adminName!", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(24.dp))
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), modifier = Modifier.fillMaxWidth()) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f)), 
+            modifier = Modifier.fillMaxWidth().clickable { onExportClick() },
+            border = BorderStroke(1.dp, Color(0xFFB39DDB).copy(alpha = 0.2f))
+        ) {
              Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Estadística de Usuarios", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Estadística de Usuarios", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.Default.Download, "Exportar", tint = Color(0xFFB39DDB), modifier = Modifier.size(20.dp))
+                }
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     StatItemAdmin(Icons.Default.Group, "Total", userList.size.toString())
                     StatItemAdmin(Icons.Default.CalendarMonth, "Último Mes", usersLastMonth.toString())
@@ -253,7 +278,7 @@ fun AdminDashboardTab(adminName: String, userList: List<UserInfo>, historyList: 
 fun UserGrowthLineChart(userList: List<UserInfo>) {
     val spanishMonths = listOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
     val monthsData = remember(userList) {
-        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val now = kotlinx.datetime.Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         (0..5).reversed().map { monthsBack ->
             val targetDate = now.minus(monthsBack, DateTimeUnit.MONTH)
             val monthIdx = targetDate.month
@@ -388,7 +413,7 @@ fun CreateUserDialog(apiService: ApiService, snackbarHostState: SnackbarHostStat
                         val input = tfv.text
                         val digits = input.filter { it.isDigit() }.take(8)
                         val formatted = buildString {
-                            if (digits.length >= 1) append(digits.substring(0, minOf(digits.length, 4)))
+                            if (digits.isNotEmpty()) append(digits.substring(0, minOf(digits.length, 4)))
                             if (digits.length >= 5) {
                                 append("-")
                                 val m = digits.substring(4, minOf(digits.length, 6))
@@ -575,8 +600,8 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                         OutlinedTextField(value = tempHeight, onValueChange = { if (it.all { char -> char.isDigit() }) tempHeight = it }, label = { Text("Altura (cm)") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Retos y Récords") {
-                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempRecordWeight = it }, label = { Text("Máximo Peso (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all{c -> c.isDigit()}) tempRecordTime = it }, label = { Text("Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempRecordWeight, onValueChange = { if(it.all { c -> c.isDigit() || c == '.' }) tempRecordWeight = it }, label = { Text("Máximo Peso (kg)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempRecordTime, onValueChange = { if(it.all { c -> c.isDigit() }) tempRecordTime = it }, label = { Text("Carrera (min)") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     ExpandableSection("Salón de la Fama") {
                         AwardSwitchRow("Premio Constancia", premioConstancia, user.fecha_premio_constancia) { premioConstancia = it }
@@ -585,7 +610,7 @@ fun UserDetailView(user: UserInfo, apiService: ApiService, token: String, adminN
                     }
                     Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)).padding(12.dp)) {
                         Text("Suscripción: ${user.dias_suscripcion} días", color = Color.White, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(value = tempSuscripcionAdd, onValueChange = { if(it.all{c -> c.isDigit()}) tempSuscripcionAdd = it }, label = { Text("Añadir Días") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempSuscripcionAdd, onValueChange = { if(it.all { c -> c.isDigit() }) tempSuscripcionAdd = it }, label = { Text("Añadir Días") }, modifier = Modifier.fillMaxWidth(), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     Button(onClick = {
                         isUpdating = true
@@ -722,8 +747,8 @@ fun ArticuloDetailView(articulo: Articulo, apiService: ApiService, onRefresh: ()
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { tempCat = "Vestimenta" }) { RadioButton(selected = tempCat == "Vestimenta", onClick = { tempCat = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = tempPrecio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) tempPrecio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                        OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempPrecio, onValueChange = { if(it.all { c -> c.isDigit() || c == '.' }) tempPrecio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        OutlinedTextField(value = tempStock, onValueChange = { if(it.all { c -> c.isDigit() }) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     Button(onClick = {
                         isUpdating = true
@@ -777,8 +802,8 @@ fun AddArticuloDialog(onDismiss: () -> Unit, onArticuloCreated: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { categoria = "Vestimenta" }) { RadioButton(selected = categoria == "Vestimenta", onClick = { categoria = "Vestimenta" }, colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFB39DDB))); Text("Vestimenta", color = Color.White) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = precio, onValueChange = { if(it.all{c -> c.isDigit() || c == '.'}) precio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(value = tempStock, onValueChange = { if(it.all{c -> c.isDigit()}) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = precio, onValueChange = { if(it.all { c -> c.isDigit() || c == '.' }) precio = it }, label = { Text("Precio") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = tempStock, onValueChange = { if(it.all { c -> c.isDigit() }) tempStock = it }, label = { Text("Stock") }, modifier = Modifier.weight(1f), colors = fieldColors, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
             }
         },
